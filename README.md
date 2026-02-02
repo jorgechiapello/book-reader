@@ -25,19 +25,19 @@ This project supports two TTS backends:
 ### Basic (XTTS backend)
 
     # End-to-end generation
-    python src/main.py --input book.txt --output-dir output --voice joe --language en run
+    python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice joe --language en run
 
     # Or step by step
-    python src/main.py --input book.txt --output-dir output ingest
-    python src/main.py --input book.txt --output-dir output --voice joe speak
+    python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output ingest
+    python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice joe speak
 
 ### With StyleTTS2 (more expressive)
 
     # Basic StyleTTS2 - uses voice sample for both voice and style
-    python src/main.py --input book.txt --output-dir output --voice joe --tts-backend styletts2 run
+    python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice joe --tts-backend styletts2 run
 
     # With separate style reference (e.g., excited reading)
-    python src/main.py --input book.txt --output-dir output --voice joe \
+    python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice joe \
         --tts-backend styletts2 \
         --style-ref voices/joe_excited/sample.wav \
         run
@@ -62,19 +62,46 @@ Enable automatic emotion detection using a local LLM. The LLM analyzes the text,
 
     brew services stop ollama
 
-**Run with sentiment analysis:**
+**Two sentiment backends available:**
+
+1. **Direct Ollama (default)** - Fast, single-pass emotion analysis
+2. **CrewAI Multi-Agent** - Sophisticated 3-agent workflow with iterative refinement
+
+**Run with sentiment analysis (direct Ollama):**
 
 ```bash
-python src/main.py --input book.txt --output-dir output --voice joe --tts-backend styletts2 --sentiment run
+python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice joe --tts-backend styletts2 --sentiment run
+```
+
+**Run with CrewAI multi-agent workflow:**
+
+```bash
+python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice joe --tts-backend styletts2 --sentiment --sentiment-backend crewai run
 ```
 
 **With a specific Ollama model:**
 
 ```bash
-python src/main.py --input book.txt --output-dir output --voice joe \
+python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice joe \
     --tts-backend styletts2 --sentiment \
     --ollama-model llama3.2:3b \
     run
+```
+
+### CrewAI Multi-Agent Workflow
+
+The CrewAI backend uses three specialized agents working sequentially:
+
+1. **Emotional Analyst** - Analyzes text for subtext, mood, and narrative pacing
+2. **Voice Director** - Converts text + mood map into SSML with prosody, breaks, and emphasis
+3. **SSML Critic** - Validates markup and ensures natural, non-robotic pacing
+
+This produces both raw SSML and emotion-tagged segments compatible with StyleTTS2.
+
+**Test the CrewAI workflow standalone:**
+
+```bash
+python src/sentiment_crewai.py
 ```
 
 ### Recommended Ollama Models
@@ -99,6 +126,7 @@ python src/main.py --input book.txt --output-dir output --voice joe \
 | --style-beta | 0.7 | Style strength |
 | --diffusion-steps | 5 | More steps = better quality, slower |
 | --sentiment | off | Enable LLM-powered emotion analysis |
+| --sentiment-backend | ollama | Backend: ollama (fast) or crewai (sophisticated) |
 | --ollama-model | llama3.2 | Ollama model for sentiment analysis |
 
 ### Tips for Better Sentiment

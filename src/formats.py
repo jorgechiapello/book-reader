@@ -37,25 +37,43 @@ def normalize_text(text: str) -> str:
 
 
 def merge_pdf_lines(text: str) -> str:
+    """
+    Merge PDF lines while preserving sentence boundaries.
+    
+    PDFs often break mid-sentence, but we want to preserve:
+    - Sentence endings (. ! ?)
+    - Paragraph breaks (blank lines)
+    """
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     lines = [line.strip() for line in text.split("\n")]
     merged: List[str] = []
     buffer = ""
+    
     for line in lines:
+        # Blank line = paragraph break
         if not line:
             if buffer:
                 merged.append(buffer.strip())
                 buffer = ""
-            merged.append("")
+            merged.append("")  # Preserve paragraph break
             continue
+        
+        # Handle hyphenation at line breaks
         if buffer.endswith("-") and not buffer.endswith("--"):
             buffer = buffer[:-1] + line
+        # If previous line ended with sentence, start new line
+        elif buffer and (buffer.endswith(".") or buffer.endswith("!") or buffer.endswith("?")):
+            merged.append(buffer.strip())
+            buffer = line
+        # Otherwise join with space
         elif buffer:
             buffer = buffer + " " + line
         else:
             buffer = line
+    
     if buffer:
         merged.append(buffer.strip())
+    
     return "\n".join(merged)
 
 
