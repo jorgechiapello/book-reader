@@ -2,3 +2,13 @@ beautifulsoup4==4.12.3
 ebooklib==0.18
 pypdf==4.2.0
 TTS==0.22.0
+transformers>=4.33,<4.45
+torch>=2.0,<2.6
+torchaudio>=2.0,<2.6
+numpy>=1.22,<2.0
+scipy
+requests
+python-dotenv
+# Optional: StyleTTS2 backend (uncomment to install)
+# styletts2
+# Note: For sentiment analysis, install Ollama separately: brew install ollama

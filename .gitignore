@@ -7,11 +7,15 @@ __pycache__/
 env/
 venv/
 ENV/
+.env
 
 output/
-voices/
+voices/*
+!voices/README.md
 *.wav
 *.mp3
+
+datasets/
 
 .DS_Store
 pip-wheel-metadata/

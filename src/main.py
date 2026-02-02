@@ -1,10 +1,16 @@
 import argparse
 import json
+import os
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 from formats import Chapter, extract_chapters, slugify
-from tts import generate_audio
 from voices import resolve_voice_sample
 
 
@@ -62,20 +68,83 @@ def speak_command(args: argparse.Namespace) -> None:
     manifest = load_manifest(output_dir, book_slug)
     chapters_dir = build_output_dir(output_dir, book_slug)
     voice_sample = resolve_voice_sample(args.voice, Path(args.voices_dir))
+
+    # Resolve style reference if provided
+    style_ref: Optional[Path] = None
+    if hasattr(args, "style_ref") and args.style_ref:
+        style_ref = Path(args.style_ref)
+        if not style_ref.exists():
+            raise FileNotFoundError(f"Style reference not found: {style_ref}")
+
+    backend = getattr(args, "tts_backend", "xtts")
+    use_sentiment = getattr(args, "sentiment", False)
+    ollama_model = getattr(args, "ollama_model", "llama3.2")
+
     for chapter in manifest["chapters"]:
         chapter_path = chapters_dir / chapter["file"]
         if not chapter_path.exists():
             raise FileNotFoundError(f"Missing chapter file: {chapter_path}")
         audio_path = chapters_dir / chapter["file"].replace(".txt", ".wav")
         text = chapter_path.read_text(encoding="utf-8")
-        generate_audio(
-            text=text,
-            output_path=audio_path,
-            voice_sample_path=voice_sample,
-            language=args.language,
-            model_name=args.model,
-            device=args.device,
-        )
+
+        print(f"Processing: {chapter['title']}")
+
+        if backend == "styletts2":
+            if use_sentiment:
+                # Use LLM-powered sentiment analysis
+                from sentiment import process_chapter_with_sentiment
+                from tts_styletts2 import generate_audio_with_emotions
+
+                print(f"  Analyzing sentiment with Ollama ({ollama_model})...")
+                segments = process_chapter_with_sentiment(
+                    text=text,
+                    model=ollama_model,
+                )
+                print(f"  Found {len(segments)} emotion segments")
+                
+                # Show emotion breakdown
+                emotions = {}
+                for seg in segments:
+                    emotions[seg.emotion] = emotions.get(seg.emotion, 0) + 1
+                print(f"  Emotions: {emotions}")
+
+                # Save sentiment analysis to JSON file
+                sentiment_path = chapters_dir / chapter["file"].replace(".txt", ".json")
+                sentiment_data = {
+                    "chapter_title": chapter["title"],
+                    "segments": [seg.to_dict() for seg in segments]
+                }
+                sentiment_path.write_text(json.dumps(sentiment_data, indent=2), encoding="utf-8")
+                print(f"  Saved sentiment analysis: {sentiment_path}")
+
+                generate_audio_with_emotions(
+                    segments=segments,
+                    output_path=audio_path,
+                    voice_sample_path=voice_sample,
+                )
+            else:
+                from tts_styletts2 import generate_audio_styletts2
+
+                generate_audio_styletts2(
+                    text=text,
+                    output_path=audio_path,
+                    voice_sample_path=voice_sample,
+                    style_ref_path=style_ref,
+                    alpha=getattr(args, "style_alpha", 0.3),
+                    beta=getattr(args, "style_beta", 0.7),
+                    diffusion_steps=getattr(args, "diffusion_steps", 5),
+                )
+        else:
+            from tts import generate_audio
+
+            generate_audio(
+                text=text,
+                output_path=audio_path,
+                voice_sample_path=voice_sample,
+                language=args.language,
+                model_name=args.model,
+                device=args.device,
+            )
         print(f"Wrote audio: {audio_path}")
 
 
@@ -91,9 +160,60 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--title", help="Optional book title override")
     parser.add_argument("--voices-dir", default="voices", help="Directory containing voice samples")
     parser.add_argument("--voice", help="Voice sample name or path")
-    parser.add_argument("--model", default="tts_models/multilingual/multi-dataset/xtts_v2", help="XTTS model name")
     parser.add_argument("--language", default="en", help="Language code for TTS")
     parser.add_argument("--device", help="Device override (e.g., cpu, cuda)")
+
+    # TTS backend selection
+    parser.add_argument(
+        "--tts-backend",
+        choices=["xtts", "styletts2"],
+        default="xtts",
+        help="TTS backend to use (default: xtts)"
+    )
+
+    # XTTS-specific options
+    parser.add_argument(
+        "--model",
+        default="tts_models/multilingual/multi-dataset/xtts_v2",
+        help="XTTS model name (only for xtts backend)"
+    )
+
+    # StyleTTS2-specific options
+    parser.add_argument(
+        "--style-ref",
+        help="Path to style reference audio (for styletts2 backend)"
+    )
+    parser.add_argument(
+        "--style-alpha",
+        type=float,
+        default=float(os.getenv("STYLETTS2_ALPHA", "0.3")),
+        help="StyleTTS2 alpha: 0=more target speaker, 1=more reference style (default: 0.3)"
+    )
+    parser.add_argument(
+        "--style-beta",
+        type=float,
+        default=float(os.getenv("STYLETTS2_BETA", "0.7")),
+        help="StyleTTS2 beta: style strength (default: 0.7)"
+    )
+    parser.add_argument(
+        "--diffusion-steps",
+        type=int,
+        default=int(os.getenv("STYLETTS2_DIFFUSION_STEPS", "5")),
+        help="StyleTTS2 diffusion steps, more=better quality but slower (default: 5)"
+    )
+
+    # Sentiment analysis options
+    parser.add_argument(
+        "--sentiment",
+        action="store_true",
+        default=os.getenv("ENABLE_SENTIMENT", "false").lower() == "true",
+        help="Enable LLM-powered sentiment analysis for expressive reading (requires Ollama)"
+    )
+    parser.add_argument(
+        "--ollama-model",
+        default=os.getenv("OLLAMA_MODEL", "llama3.2"),
+        help="Ollama model for sentiment analysis (default: llama3.2)"
+    )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("ingest", help="Parse book into chapter text files")

@@ -8,46 +8,126 @@ Local audiobook generator that parses TXT/EPUB/PDF into chapters and generates p
    - `python3 -m venv .venv`
    - `source .venv/bin/activate`
    - `pip3 install -r requirements.txt`
-2. Install PyTorch (required by Coqui TTS):
+2. Install PyTorch (required by TTS engines):
    - Follow the official instructions at https://pytorch.org/get-started/locally/
 
-## Voice Samples
+## TTS Backends
 
-Place your voice sample in the `voices/` folder. The tool supports:
-- `voices/your_voice.wav`
-- `voices/your_voice/sample.wav`
+This project supports two TTS backends:
 
-Recommended: 1–5 minutes of clean audio, no background noise.
-
-Example prompt to record your sample (aim for about five minutes, read it naturally):
-
-See `VOICE_SAMPLE.md`.
+| Backend | Strengths | Use Case |
+|---------|-----------|----------|
+| **XTTS** (default) | Stable, multilingual, good voice cloning | General audiobook generation |
+| **StyleTTS2** | Superior expressiveness, style/emotion control | When you want varied sentiments |
 
 ## Usage
 
-### Ingest (extract chapters)
-`python src/main.py ingest --input /path/to/book.epub --output-dir /path/to/output`
+### Basic (XTTS backend)
 
-### Speak (generate audio)
-`python src/main.py speak --input /path/to/book.epub --output-dir /path/to/output --voice your_voice`
+    # End-to-end generation
+    python src/main.py --input book.txt --output-dir output --voice joe --language en run
 
-### End-to-end
-`python src/main.py run --input /path/to/book.epub --output-dir /path/to/output --voice your_voice`
+    # Or step by step
+    python src/main.py --input book.txt --output-dir output ingest
+    python src/main.py --input book.txt --output-dir output --voice joe speak
+
+### With StyleTTS2 (more expressive)
+
+    # Basic StyleTTS2 - uses voice sample for both voice and style
+    python src/main.py --input book.txt --output-dir output --voice joe --tts-backend styletts2 run
+
+    # With separate style reference (e.g., excited reading)
+    python src/main.py --input book.txt --output-dir output --voice joe \
+        --tts-backend styletts2 \
+        --style-ref voices/joe_excited/sample.wav \
+        run
+
+### With LLM Sentiment Analysis (most expressive)
+
+Enable automatic emotion detection using a local LLM. The LLM analyzes the text, segments it by emotion, and applies different TTS parameters for each segment.
+
+**Prerequisites - Install Ollama:**
+
+    brew install ollama
+
+**Start Ollama (before generating audio):**
+
+    brew services start ollama
+
+**Download a model (one-time):**
+
+    ollama pull llama3.2:3b
+
+**Stop Ollama (when done, to free resources):**
+
+    brew services stop ollama
+
+**Run with sentiment analysis:**
+
+```bash
+python src/main.py --input book.txt --output-dir output --voice joe --tts-backend styletts2 --sentiment run
+```
+
+**With a specific Ollama model:**
+
+```bash
+python src/main.py --input book.txt --output-dir output --voice joe \
+    --tts-backend styletts2 --sentiment \
+    --ollama-model llama3.2:3b \
+    run
+```
+
+### Recommended Ollama Models
+
+| Model | Size | Speed | Quality | Best For |
+|-------|------|-------|---------|----------|
+| `llama3.2:3b` | ~2GB | Fast | Good | **Apple M1/M2/M3 (recommended)** |
+| `llama3.2:1b` | ~1GB | Fastest | OK | Low memory systems |
+| `llama3:8b-instruct-q4_0` | ~4.7GB | Medium | Best | Systems with 16GB+ RAM |
+| `phi3:mini` | ~2.2GB | Fast | Good | Alternative lightweight option |
+
+**For Apple Silicon (M1/M2/M3):** Use `llama3.2:3b` for the best balance of speed and quality.
+
+    ollama pull llama3.2:3b
+
+### StyleTTS2 Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| --style-ref | (voice sample) | Path to style reference audio |
+| --style-alpha | 0.3 | 0=more target speaker, 1=more reference style |
+| --style-beta | 0.7 | Style strength |
+| --diffusion-steps | 5 | More steps = better quality, slower |
+| --sentiment | off | Enable LLM-powered emotion analysis |
+| --ollama-model | llama3.2 | Ollama model for sentiment analysis |
+
+### Tips for Better Sentiment
+
+1. **Use --sentiment flag**: Automatically varies emotion per segment based on text content.
+
+2. **Record expressive samples**: Create different samples for different moods:
+   - voices/joe_calm/sample.wav - relaxed narration
+   - voices/joe_excited/sample.wav - energetic reading
+   - voices/joe_dramatic/sample.wav - intense moments
+
+3. **Use style references**: Point --style-ref to an audio that demonstrates the emotion you want.
+
+4. **Adjust alpha/beta**: Higher alpha blends more of the style reference's emotion.
 
 ## Output Structure
 
-```
-output/
-  book-slug/
-    manifest.json
-    chapters/
-      001_chapter-1.txt
-      001_chapter-1.wav
-      002_chapter-2.txt
-      002_chapter-2.wav
-```
+    output/
+      book-slug/
+        manifest.json
+        chapters/
+          001_chapter-1.txt
+          001_chapter-1.wav
+          002_chapter-2.txt
+          002_chapter-2.wav
 
 ## Notes
 
 - Chapter splitting is heuristic, especially for PDFs. If headings are missing, chapters are split by size.
 - Audio output is WAV for reliable concatenation across chunks.
+- StyleTTS2 requires more VRAM than XTTS (~6GB vs ~4GB).
+- Sentiment analysis requires Ollama running locally (localhost:11434).
