@@ -76,7 +76,7 @@ python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output -
 **Run with CrewAI multi-agent workflow:**
 
 ```bash
-python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice joe --tts-backend styletts2 --sentiment --sentiment-backend crewai run
+python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice Heisenberg --tts-backend styletts2 --sentiment --sentiment-backend crewai run
 ```
 
 **With a specific Ollama model:**

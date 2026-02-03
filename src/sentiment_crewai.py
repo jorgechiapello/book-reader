@@ -34,7 +34,7 @@ which is the English way of settling everything.
 """
 
 
-def create_local_llm(model: str = "llama3.2:3b", base_url: str = "http://localhost:11434") -> LLM:
+def create_local_llm(model: str = "qwen2.5:14b", base_url: str = "http://localhost:11434") -> LLM:
     """
     Create a local Ollama LLM connection via CrewAI.
     
@@ -54,49 +54,67 @@ def create_local_llm(model: str = "llama3.2:3b", base_url: str = "http://localho
         api_key="NA"
     )
 
-
 def create_emotional_analyst(llm: LLM) -> Agent:
-    """
-    Agent 1: The Emotional Analyst
-    
-    Role: Narrative Psychologist who analyzes text for emotional subtext,
-    character states, and narrative pacing.
-    """
     return Agent(
-        role="Narrative Psychologist",
-        goal="Analyze text for emotional undertones, character psychology, and narrative pacing",
-        backstory="""You are an expert in literary analysis with deep understanding of 
-        human emotions and storytelling. You can detect subtle emotional shifts, 
-        recognize character motivations, and identify the pacing of dramatic moments. 
-        Your analysis helps voice actors deliver more authentic performances.""",
+        role="Narrative Emotion Annotator",
+        goal="""
+        Convert narrative text into a structured emotional timeline using
+        Plutchik emotions and Valence–Arousal–Dominance (VAD) scores.
+        The output must be suitable for expressive text-to-speech synthesis.
+        """,
+        backstory="""
+        You are an expert in narrative psychology and affective computing.
+
+        You MUST:
+        - Classify emotions ONLY using Plutchik's 8 core emotions:
+          joy, trust, fear, surprise, sadness, disgust, anger, anticipation.
+        - Assign an intensity value between 0.0 and 1.0 for each emotion.
+        - Assign VAD values:
+            valence:   -1.0 (very negative) to 1.0 (very positive)
+            arousal:    0.0 (calm) to 1.0 (excited)
+            dominance:  0.0 (submissive) to 1.0 (dominant)
+
+        Think like a voice director:
+        - How should the line sound?
+        - Where does emotion shift?
+        - What should the listener feel?
+
+        DO NOT write literary analysis.
+        DO NOT explain your reasoning.
+        Output ONLY structured data.
+        """,
         verbose=True,
         allow_delegation=False,
         llm=llm
     )
 
 
+
 def create_voice_director(llm: LLM) -> Agent:
-    """
-    Agent 2: The Voice Director
-    
-    Role: Audiobook Voice Director who converts text into SSML with
-    proper prosody, breaks, and emphasis for cinematic delivery.
-    """
     return Agent(
         role="Audiobook Voice Director",
-        goal="Transform text into cinematic SSML with perfect pacing and emotional expression",
-        backstory="""You are a renowned audiobook director with 20 years of experience 
-        in voice acting and audio production. You excel at using SSML tags to create 
-        dramatic pauses, varied pitch and rate, and strategic emphasis. 
-        
-        CRITICAL: You use emphasis SPARINGLY - only 1-2 key phrases per sentence maximum.
-        You emphasize complete phrases (2-5 words), never individual words. Over-emphasis
-        creates robotic, unnatural delivery. Most of your emotional expression comes from
-        prosody (rate and pitch), not emphasis tags.
-        
-        You know how to avoid robotic delivery by adding natural breathing spaces and 
-        emotional nuances. Your SSML markup brings text to life with subtle, professional
-        expressiveness.""",
+        goal="""
+        Convert structured emotional segments into SSML.
+        You DO NOT infer emotion; you execute it literally.
+        Handle multiple characters, transitions, and prosody.
+        """,
+        backstory="""
+        You are a professional audiobook director.
+        Responsibilities:
+        - Map VAD → SSML prosody (rate, pitch, volume)
+        - Respect emotional intensity and dominance
+        - Use pauses according to transitions:
+            soft: 200-300ms
+            sharp: 400-700ms
+            break: 800ms+
+        - Emphasis:
+            Only if intensity >= 0.7 and dominance >= 0.4
+            Apply sparingly: 1–2 phrases per sentence
+        - Handle multiple characters by switching voice tags
+        - Include micro-pauses to simulate breathing
+        - Output well-formed SSML for XTTS
+        - No explanations or extra text
+        """,
         verbose=True,
         allow_delegation=False,
         llm=llm
@@ -173,11 +191,27 @@ def create_ssml_task(agent: Agent, text: str) -> Task:
     - <emphasis> tags for key phrases
     """
     return Task(
-        description=f"""Using the Mood Map from the Emotional Analyst, convert this text into 
-expressive SSML markup.
+        description=f"""Using the Mood Map from the Emotional Analyst, add SSML markup to this text.
 
-Original text:
+*** CRITICAL: TEXT PRESERVATION RULES - READ CAREFULLY ***
+
+You MUST include EVERY SINGLE WORD from the original text below, starting from the VERY FIRST WORD.
+The text may start mid-sentence - this is INTENTIONAL. Do NOT skip it.
+
+FORBIDDEN ACTIONS (WILL CAUSE FAILURE):
+- Skipping ANY words, even if they seem incomplete
+- Changing, correcting, or "fixing" any words
+- Paraphrasing or summarizing
+- Removing sentences or phrases for any reason
+- Adding new content not in the original
+- Reordering sentences
+
+The output MUST start with the same words as the original text starts with.
+Every line of the original MUST appear in your SSML output.
+
+=== ORIGINAL TEXT (include EVERY word, starting from "{text.split()[0] if text.split() else ''}") ===
 {text}
+=== END OF ORIGINAL TEXT ===
 
 SSML Tags to use:
 - <prosody rate="x-slow|slow|medium|fast|x-fast" pitch="x-low|low|medium|high|x-high">text</prosody>
@@ -189,16 +223,12 @@ Guidelines:
 2. Adjust rate based on pacing (slow=contemplative, fast=urgent)
 3. Adjust pitch based on emotion (high=excited, low=somber)
 4. Use <emphasis> SPARINGLY - only for 1-2 KEY phrases per sentence maximum
-   - Emphasize PHRASES (2-5 words), NOT individual words
-   - Example: <emphasis level="strong">when hope was about gone</emphasis> ✅
-   - BAD: <emphasis>when</emphasis> <emphasis>hope</emphasis> <emphasis>was</emphasis> ❌
 5. Most text should have NO emphasis tags - use prosody for general emotion instead
-6. Keep segments natural - avoid over-tagging
-7. Wrap everything in a <speak> root element
+6. Wrap everything in a <speak> root element
 
-Return ONLY the complete SSML document, properly formatted.""",
+Return ONLY the complete SSML document with ALL original text preserved.""",
         agent=agent,
-        expected_output="A complete, well-formatted SSML document with prosody, breaks, and emphasis tags"
+        expected_output="A complete, well-formatted SSML document with EVERY word from the original text preserved verbatim, enhanced with prosody, breaks, and emphasis tags"
     )
 
 
@@ -213,38 +243,37 @@ def create_validation_task(agent: Agent) -> Task:
     - Technical errors in attribute values
     """
     return Task(
-        description="""CRITICAL: You are an SSML MARKUP validator, NOT a content editor or writing coach.
+        description="""CRITICAL: You are an SSML MARKUP validator with TWO responsibilities:
 
-Your ONLY job is to check the SSML XML markup for technical correctness.
+1. VALIDATE TEXT PRESERVATION (MOST IMPORTANT)
+   - The SSML output must contain ALL words from the original text
+   - No words should be changed, removed, or paraphrased
+   - If text has been modified, this is a CRITICAL ERROR
+   - If text is missing or altered, you MUST reject and note the issue
 
-DO NOT analyze story content.
-DO NOT provide writing advice.
-DO NOT suggest narrative improvements.
-DO NOT rewrite the text.
-
-ONLY validate these SSML aspects:
-
-1. XML Syntax:
+2. VALIDATE XML SYNTAX
    - All <prosody>, <break>, <emphasis> tags properly closed
    - Root <speak> element present
    - Valid attributes: rate (x-slow|slow|medium|fast|x-fast), pitch (x-low|low|medium|high|x-high), time (e.g., 500ms, 1s)
-
-2. Markup Quality:
-   - Variation in rate and pitch values
-   - Appropriate number of breaks
    - Emphasis used SPARINGLY (1-2 phrases per sentence max, not individual words)
    - If you see multiple <emphasis> tags on consecutive words, REMOVE them - this is over-tagging
-   - Not over-tagged or under-tagged
 
-3. Output Format:
-   - If SSML is valid: output it EXACTLY as received
-   - If SSML has errors: output corrected SSML only
-   - NEVER add explanations, analysis, or commentary
-   - NEVER include anything except the <speak>...</speak> XML document
+DO NOT:
+- Analyze story content
+- Provide writing advice
+- Suggest narrative improvements
+- Rewrite or modify ANY text content
+
+Output Format:
+- If SSML is valid AND text is preserved: output it EXACTLY as received
+- If SSML has XML errors: fix ONLY the XML tags, preserve all text
+- If text was modified/removed: output the SSML but note that text integrity was compromised
+- NEVER add explanations, analysis, or commentary
+- NEVER include anything except the <speak>...</speak> XML document
 
 Return ONLY valid SSML markup. Nothing else.""",
         agent=agent,
-        expected_output="Valid SSML document with no explanations or commentary"
+        expected_output="Valid SSML document with original text preserved and no explanations or commentary"
     )
 
 
@@ -377,7 +406,7 @@ def split_text_smartly(text: str, max_chunk_size: int = 3000) -> list[str]:
 
 def process_chapter_with_crewai(
     text: str,
-    model: str = "llama3.2:3b",
+    model: str = "qwen2.5:14b",
     ollama_url: str = "http://localhost:11434",
     chunk_size: int = 3000,
 ) -> tuple[List[EmotionSegment], str, str]:
@@ -508,7 +537,7 @@ def main():
     # Process the sample text
     segments, raw_ssml, mood_map = process_chapter_with_crewai(
         text=SAMPLE_TEXT.strip(),
-        model="llama3.2:3b",
+        model="qwen2.5:14b",
     )
     
     print()

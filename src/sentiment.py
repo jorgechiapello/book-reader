@@ -73,7 +73,7 @@ Text to analyze:
 
 def analyze_sentiment(
     text: str,
-    model: str = "llama3.2",
+    model: str = "qwen2.5:14b",
     ollama_url: str = "http://localhost:11434",
 ) -> List[EmotionSegment]:
     """
@@ -147,7 +147,7 @@ def _create_segment(text: str, emotion: str) -> EmotionSegment:
 
 def process_chapter_with_sentiment(
     text: str,
-    model: str = "llama3.2",
+    model: str = "qwen2.5:14b",
     ollama_url: str = "http://localhost:11434",
     chunk_size: int = 2000,
 ) -> List[EmotionSegment]:
