@@ -31,7 +31,7 @@ def ssml_transcriber(llm: LLM) -> Agent:
     )
 
 
-def ssml_task(agent: Agent, text: str) -> Task:
+def ssml_task(agent: Agent, text: str, context: list[Task] = None) -> Task:
     """
     Task 2: Convert text + Mood Map into SSML
     
@@ -78,6 +78,7 @@ Guidelines:
 
 Return ONLY the complete SSML document with ALL original text preserved.""",
         agent=agent,
-        expected_output="A complete, well-formatted SSML document with EVERY word from the original text preserved verbatim, enhanced with prosody, breaks, and emphasis tags"
+        expected_output="A complete, well-formatted SSML document with EVERY word from the original text preserved verbatim, enhanced with prosody, breaks, and emphasis tags",
+        context=context
     )
 

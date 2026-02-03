@@ -40,6 +40,15 @@ EMOTION_PARAMS = {
     "dramatic": {"alpha": 0.15, "beta": 0.85, "diffusion_steps": 10, "prosody": {"rate": "x-slow", "pitch": "medium"}},
     "hopeful": {"alpha": 0.25, "beta": 0.75, "diffusion_steps": 7, "prosody": {"rate": "slow", "pitch": "medium"}},
     "desperate": {"alpha": 0.4, "beta": 0.8, "diffusion_steps": 10, "prosody": {"rate": "medium", "pitch": "low"}},
+    # Plutchik core emotions mapping
+    "joy": {"alpha": 0.2, "beta": 0.85, "diffusion_steps": 10, "prosody": {"rate": "medium-fast", "pitch": "high"}},
+    "trust": {"alpha": 0.3, "beta": 0.75, "diffusion_steps": 5, "prosody": {"rate": "slow-medium", "pitch": "medium"}},
+    "fear": {"alpha": 0.2, "beta": 0.8, "diffusion_steps": 12, "prosody": {"rate": "fast", "pitch": "low"}},
+    "surprise": {"alpha": 0.1, "beta": 0.9, "diffusion_steps": 8, "prosody": {"rate": "fast", "pitch": "high"}},
+    "sadness": {"alpha": 0.55, "beta": 0.45, "diffusion_steps": 10, "prosody": {"rate": "x-slow", "pitch": "low"}},
+    "disgust": {"alpha": 0.4, "beta": 0.6, "diffusion_steps": 8, "prosody": {"rate": "slow", "pitch": "x-low"}},
+    "anger": {"alpha": 0.1, "beta": 0.9, "diffusion_steps": 15, "prosody": {"rate": "medium-fast", "pitch": "low"}},
+    "anticipation": {"alpha": 0.2, "beta": 0.8, "diffusion_steps": 6, "prosody": {"rate": "medium", "pitch": "medium"}},
 }
 
 
@@ -59,12 +68,15 @@ def _get_model():
 
 
 def split_text(text: str, max_chars: int = 500) -> List[str]:
-    """Split text into smaller chunks for processing, preserving SSML tags."""
+    """Split text into smaller chunks for processing, preserving SSML tags and cleaning whitespace."""
+    # Collapse multiple spaces and newlines into a single space
+    text = re.sub(r'\s+', ' ', text).strip()
+    
     # Heuristic: split by sentence but keep tags intact
     sentences = []
     current = ""
     # Simple split by sentence-ending punctuation followed by space
-    parts = re.split(r'(?<=[.!?])\s+', text.replace("\n", " "))
+    parts = re.split(r'(?<=[.!?])\s+', text)
     
     for part in parts:
         if not part.strip():
@@ -91,44 +103,44 @@ def parse_ssml_and_generate(
 ) -> np.ndarray:
     """
     Parses a string for SSML-like tags and generates audio segments.
-    Currently supports: <break time="..."/>, <prosody>, <emphasis>.
+    Correctly inserts silences at <break/> tag locations.
     """
-    # 1. Handle <break/> tags by splitting the text
-    # 2. Strip other tags for the actual TTS engine (StyleTTS2 doesn't support them natively)
-    # but use them to adjust alpha/beta/steps for that specific chunk.
+    # Split by any <break/> tags
+    # We use a regex that captures the entire tag as a delimiter to preserve order
+    parts = re.split(r'(<break\s+time=["\']?\d+(?:ms|s)["\']?\s*/>)', text)
     
-    # For now, we'll implement a simplified version: 
-    # - Strip all tags for the actual speech
-    # - If <break time="1s"/> is found, add silence
+    all_wavs = []
     
-    clean_text = re.sub(r'<[^>]+>', '', text).strip()
-    
-    # Detect breaks
-    breaks = re.findall(r'<break\s+time=["\']?(\d+)(ms|s)["\']?\s*/>', text)
-    
-    # If there is no actual text to speak, start with an empty array
-    if not clean_text:
-        wav = np.array([], dtype=np.float32)
-    else:
-        # Generate main audio
-        wav = model.inference(
-            text=clean_text,
-            target_voice_path=voice_sample_path,
-            output_sample_rate=sample_rate,
-            alpha=base_alpha,
-            beta=base_beta,
-            diffusion_steps=base_steps,
-            embedding_scale=embedding_scale,
-        )
-    
-    # Add silence for each break found (simplified: append to end)
-    if breaks:
-        for val, unit in breaks:
-            duration = float(val) / 1000.0 if unit == 'ms' else float(val)
-            silence = np.zeros(int(duration * sample_rate))
-            wav = np.concatenate([wav, silence])
+    for part in parts:
+        if not part.strip():
+            continue
             
-    return wav
+        # Check if this part is a break tag
+        break_match = re.search(r'<break\s+time=["\']?(\d+)(ms|s)["\']?\s*/>', part)
+        if break_match:
+            val, unit = break_match.groups()
+            duration = float(val) / 1000.0 if unit == 'ms' else float(val)
+            silence = np.zeros(int(duration * sample_rate), dtype=np.float32)
+            all_wavs.append(silence)
+        else:
+            # It's text (possibly with other tags like <emphasis> which we strip for StyleTTS2)
+            clean_text = re.sub(r'<[^>]+>', '', part).strip()
+            if clean_text:
+                wav = model.inference(
+                    text=clean_text,
+                    target_voice_path=voice_sample_path,
+                    output_sample_rate=sample_rate,
+                    alpha=base_alpha,
+                    beta=base_beta,
+                    diffusion_steps=base_steps,
+                    embedding_scale=embedding_scale,
+                )
+                all_wavs.append(wav)
+    
+    if not all_wavs:
+        return np.array([], dtype=np.float32)
+        
+    return np.concatenate(all_wavs)
 
 
 

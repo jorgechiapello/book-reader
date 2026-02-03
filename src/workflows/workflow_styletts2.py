@@ -12,11 +12,12 @@ The agents work sequentially to produce cinematic, emotionally-aware SSML.
 import json
 import os
 import re
-from typing import List
+from pathlib import Path
+from typing import List, Optional
 
 from crewai import Crew
 
-from .tts_styletts2 import EmotionSegment, parse_ssml_to_segments, generate_audio_with_emotions
+from workflows.tts_styletts2 import EmotionSegment, parse_ssml_to_segments, generate_audio_with_emotions
 
 from agents.emotional_analyst import emotional_analyst, analysis_task
 from agents.ssml_transcriber import ssml_transcriber, ssml_task
@@ -25,22 +26,7 @@ from agents.styletts_interpreter import styletts_interpreter, style_parameters_t
 from agents.utils import local_llm
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def split_text_smartly(text: str, max_chunk_size: int = 3000) -> list[str]:
+def split_text_smartly(text: str, max_chunk_size: int = 1000) -> list[str]:
     """
     Split text into chunks while preserving sentence and paragraph boundaries.
     
@@ -61,23 +47,36 @@ def split_text_smartly(text: str, max_chunk_size: int = 3000) -> list[str]:
     current_chunk = ""
     
     for paragraph in paragraphs:
-        # If adding this paragraph would exceed the limit
-        if current_chunk and len(current_chunk) + len(paragraph) + 2 > max_chunk_size:
-            # Try to split the paragraph by sentences
-            sentences = re.split(r'(?<=[.!?])\s+', paragraph)
+        # If the paragraph itself is larger than max_chunk_size, we MUST split it
+        if len(paragraph) > max_chunk_size:
+            # If we had a pending chunk, save it first
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+                current_chunk = ""
             
-            # Add sentences to current chunk until we hit the limit
+            # Split the large paragraph by sentences
+            sentences = re.split(r'(?<=[.!?])\s+', paragraph)
             for sentence in sentences:
                 if current_chunk and len(current_chunk) + len(sentence) + 1 > max_chunk_size:
-                    # Save current chunk and start new one
                     chunks.append(current_chunk.strip())
                     current_chunk = sentence
                 else:
-                    # Add sentence to current chunk
                     if current_chunk:
                         current_chunk += " " + sentence
                     else:
                         current_chunk = sentence
+            
+            # Save the last part of the split paragraph
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+                current_chunk = ""
+            continue
+
+        # If adding this paragraph would exceed the limit
+        if current_chunk and len(current_chunk) + len(paragraph) + 2 > max_chunk_size:
+            # Save current chunk and start new one with this paragraph
+            chunks.append(current_chunk.strip())
+            current_chunk = paragraph
         else:
             # Add paragraph to current chunk
             if current_chunk:
@@ -94,108 +93,43 @@ def split_text_smartly(text: str, max_chunk_size: int = 3000) -> list[str]:
 
 def process_chapter_with_crewai(
     text: str,
+    moodmap_path: Optional[str] = None,
     model: str = "qwen2.5:14b",
     ollama_url: str = "http://localhost:11434",
-    chunk_size: int = 3000,
+    chunk_size: int = 1000,
 ) -> tuple[List[EmotionSegment], str, str]:
     """
     Process a chapter using the CrewAI multi-agent workflow.
+    Optionally updates the moodmap file incrementally if moodmap_path is provided.
     
     Args:
         text: The text to process
+        moodmap_path: Optional path to the moodmap file for incremental updates
         model: Ollama model name
         ollama_url: Ollama API endpoint
-        chunk_size: Maximum chunk size for processing (soft limit)
+        chunk_size: Maximum chunk size for processing
     
     Returns:
-        Tuple of (emotion_segments, raw_ssml, mood_map)
+        Tuple of (all_segments, combined_ssml, combined_mood_map)
     """
     # Initialize LLM
     llm = local_llm(model=model, base_url=ollama_url)
     
-    # Check if text needs to be split
-    if len(text) > chunk_size:
-        print(f"  Text is {len(text)} chars, splitting into chunks preserving sentence/paragraph boundaries...")
-        text_chunks = split_text_smartly(text, max_chunk_size=chunk_size)
-        print(f"  Split into {len(text_chunks)} chunks")
-        
-        # Process each chunk separately
-        all_segments = []
-        all_ssml_parts = []
-        all_mood_maps = []
-        
-        for i, chunk in enumerate(text_chunks, 1):
-            print(f"  Processing chunk {i}/{len(text_chunks)}...")
-            
-            # Create agents
-            analyst_agent = emotional_analyst(llm)
-            transcriber_agent = ssml_transcriber(llm)
-            critic_agent = ssml_critic(llm)
-            interpreter_agent = styletts_interpreter(llm)
-            
-            # Create tasks for this chunk
-            t1 = analysis_task(analyst_agent, chunk)
-            t2 = ssml_task(transcriber_agent, chunk)
-            t3 = validation_task(critic_agent)
-            t4 = style_parameters_task(interpreter_agent)
-            
-            # Create crew with sequential process
-            crew = Crew(
-                agents=[analyst_agent, transcriber_agent, critic_agent, interpreter_agent],
-                tasks=[t1, t2, t3, t4],
-                verbose=True
-            )
-            
-            # Execute the workflow
-            result = crew.kickoff()
-            
-            # Capture the mood map from the analysis task
-            chunk_mood_map = str(t1.output) if hasattr(t1, 'output') else ""
-            all_mood_maps.append(f"\n=== CHUNK {i}/{len(text_chunks)} ===\n\n{chunk_mood_map}")
-            
-            # Capture the SSML from the critic task
-            chunk_ssml = str(t3.output) if hasattr(t3, 'output') else ""
-            # Remove output <speak> tags for merging logic
-            chunk_ssml_clean = re.sub(r'^<speak[^>]*>\s*|\s*</speak>$', '', chunk_ssml, flags=re.DOTALL)
-            all_ssml_parts.append(chunk_ssml_clean)
-            
-            # Parse the JSON result from the interpreter
-            try:
-                # Cleaner JSON extraction just in case
-                json_str = str(result)
-                # If wrapped in markdown blocks
-                if "```json" in json_str:
-                    json_str = json_str.split("```json")[1].split("```")[0].strip()
-                elif "```" in json_str:
-                    json_str = json_str.split("```")[1].split("```")[0].strip()
-                
-                segment_data = json.loads(json_str)
-                
-                for item in segment_data:
-                    all_segments.append(EmotionSegment(
-                        text=item.get("text", ""),
-                        emotion=item.get("emotion", "neutral"),
-                        alpha=float(item.get("alpha", 0.3)),
-                        beta=float(item.get("beta", 0.7)),
-                        diffusion_steps=int(item.get("diffusion_steps", 5)),
-                        prosody=None # Interpreter handles params directly
-                    ))
-            except Exception as e:
-                print(f"Error parsing JSON from interpreter: {e}")
-                print(f"Raw output: {result}")
-                # Fallback to regex parsing if JSON fails (using the SSML)
-                print("Falling back to regex parsing...")
-                chunk_segments = parse_ssml_to_segments(f'<speak>{chunk_ssml_clean}</speak>', chunk)
-                all_segments.extend(chunk_segments)
-        
-        # Combine all SSML parts and mood maps
-        raw_ssml = '<speak>\n' + '\n'.join(all_ssml_parts) + '\n</speak>'
-        mood_map = '\n\n'.join(all_mood_maps)
-        segments = all_segments
-        
-    else:
-        # Process as single chunk (original behavior)
-        print(f"  Processing text as single chunk ({len(text)} chars)...")
+    print(f"  Text is {len(text)} chars, splitting into paragraph-based chunks...")
+    text_chunks = split_text_smartly(text, max_chunk_size=chunk_size)
+    print(f"  Split into {len(text_chunks)} chunks")
+    
+    all_segments = []
+    all_ssml_parts = []
+    all_mood_maps = []
+    
+    # Initialize moodmap file if provided
+    if moodmap_path:
+        with open(moodmap_path, "w", encoding="utf-8") as f:
+            f.write(f"# Mood Map for Chapter\n\n")
+
+    for i, chunk in enumerate(text_chunks, 1):
+        print(f"  Processing chunk {i}/{len(text_chunks)}...")
         
         # Create agents
         analyst_agent = emotional_analyst(llm)
@@ -203,11 +137,11 @@ def process_chapter_with_crewai(
         critic_agent = ssml_critic(llm)
         interpreter_agent = styletts_interpreter(llm)
         
-        # Create tasks
-        t1 = analysis_task(analyst_agent, text)
-        t2 = ssml_task(transcriber_agent, text)
-        t3 = validation_task(critic_agent)
-        t4 = style_parameters_task(interpreter_agent)
+        # Create tasks for this chunk with explicit context passing
+        t1 = analysis_task(analyst_agent, chunk)
+        t2 = ssml_task(transcriber_agent, chunk, context=[t1])
+        t3 = validation_task(critic_agent, context=[t1, t2])
+        t4 = style_parameters_task(interpreter_agent, context=[t1, t2, t3])
         
         # Create crew with sequential process
         crew = Crew(
@@ -217,20 +151,27 @@ def process_chapter_with_crewai(
         )
         
         # Execute the workflow
-        print("  Starting CrewAI multi-agent workflow...")
         result = crew.kickoff()
         
         # Capture the mood map from the analysis task
-        mood_map = str(t1.output) if hasattr(t1, 'output') else ""
+        chunk_mood_map = str(t1.output) if hasattr(t1, 'output') else ""
+        header = f"\n=== CHUNK {i}/{len(text_chunks)} ===\n\n"
+        full_chunk_mood_map = header + chunk_mood_map
+        all_mood_maps.append(full_chunk_mood_map)
         
-        # Capture SSML from critic
-        raw_ssml = str(t3.output) if hasattr(t3, 'output') else ""
+        if moodmap_path:
+            with open(moodmap_path, "a", encoding="utf-8") as f:
+                f.write(full_chunk_mood_map + "\n\n")
+            print(f"  Updated mood map: {moodmap_path}")
         
-        # Ensure SSML has proper <speak> wrapper
-        if not raw_ssml.startswith('<speak>'):
-            raw_ssml = f'<speak>\n{raw_ssml}\n</speak>'
-            
+        # Capture the SSML from the critic task
+        chunk_ssml = str(t3.output) if hasattr(t3, 'output') else ""
+        # Remove output <speak> tags for merging logic
+        chunk_ssml_clean = re.sub(r'^<speak[^>]*>\s*|\s*</speak>$', '', chunk_ssml, flags=re.DOTALL)
+        all_ssml_parts.append(chunk_ssml_clean)
+        
         # Parse the JSON result from the interpreter
+        chunk_segments = []
         try:
             # Cleaner JSON extraction just in case
             json_str = str(result)
@@ -242,9 +183,8 @@ def process_chapter_with_crewai(
             
             segment_data = json.loads(json_str)
             
-            segments = []
             for item in segment_data:
-                segments.append(EmotionSegment(
+                chunk_segments.append(EmotionSegment(
                     text=item.get("text", ""),
                     emotion=item.get("emotion", "neutral"),
                     alpha=float(item.get("alpha", 0.3)),
@@ -257,9 +197,15 @@ def process_chapter_with_crewai(
             print(f"Raw output: {result}")
             # Fallback to regex parsing if JSON fails (using the SSML)
             print("Falling back to regex parsing...")
-            segments = parse_ssml_to_segments(raw_ssml, text)
+            chunk_segments = parse_ssml_to_segments(f'<speak>{chunk_ssml_clean}</speak>', chunk)
+        
+        all_segments.extend(chunk_segments)
     
-    return segments, raw_ssml, mood_map
+    # Combine all SSML parts and mood maps
+    raw_ssml = '<speak>\n' + '\n'.join(all_ssml_parts) + '\n</speak>'
+    mood_map = '\n\n'.join(all_mood_maps)
+    
+    return all_segments, raw_ssml, mood_map
 
 
 def run_styletts2_workflow(
@@ -279,8 +225,11 @@ def run_styletts2_workflow(
     output_dir = os.path.normpath(output_dir)
     print(f"  Analyzing sentiment with CrewAI + Ollama ({ollama_model})...")
     
+    moodmap_path = os.path.join(output_dir, chapter_filename.replace(".txt", ".moodmap"))
+    
     segments, raw_ssml, mood_map = process_chapter_with_crewai(
         text=text,
+        moodmap_path=moodmap_path,
         model=ollama_model,
     )
     print(f"  Found {len(segments)} emotion segments")
@@ -308,18 +257,17 @@ def run_styletts2_workflow(
         f.write(raw_ssml)
     print(f"  Saved SSML: {ssml_path}")
     
-    # Save mood map from the Narrative Psychologist
-    moodmap_path = os.path.join(output_dir, chapter_filename.replace(".txt", ".moodmap"))
+    # Save mood map from the Narrative Psychologist (final version, though already saved incrementally if moodmap_path was provided)
     with open(moodmap_path, "w", encoding="utf-8") as f:
         f.write(mood_map)
-    print(f"  Saved mood map: {moodmap_path}")
+    print(f"  Saved final mood map: {moodmap_path}")
 
     # Generate Audio
-    audio_path = os.path.join(output_dir, chapter_filename.replace(".txt", ".wav"))
+    audio_path = Path(output_dir) / chapter_filename.replace(".txt", ".wav")
     generate_audio_with_emotions(
         segments=segments,
         output_path=audio_path,
-        voice_sample_path=voice_sample_path,
+        voice_sample_path=Path(voice_sample_path),
     )
 
     print(f"Wrote audio: {audio_path}")
@@ -346,7 +294,7 @@ def main():
     print("-" * 80)
     print()
     
-    # Process the sample text
+    # Process the sample text (no moodmap_path for standalone test)
     segments, raw_ssml, mood_map = process_chapter_with_crewai(
         text=sample_text.strip(),
         model="qwen2.5:14b",

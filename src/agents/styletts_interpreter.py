@@ -25,7 +25,7 @@ def styletts_interpreter(llm: LLM) -> Agent:
     )
 
 
-def style_parameters_task(agent: Agent) -> Task:
+def style_parameters_task(agent: Agent, context: list[Task] = None) -> Task:
     return Task(
         description="""
         Analyze the SSML text provided by the previous agent (SSML Critic) and convert it into a JSON list of audio segments for StyleTTS2.
@@ -64,5 +64,6 @@ def style_parameters_task(agent: Agent) -> Task:
         ]
         """,
         agent=agent,
-        expected_output="A valid JSON list of segment objects containing text and StyleTTS2 parameters."
+        expected_output="A valid JSON list of segment objects containing text and StyleTTS2 parameters.",
+        context=context
     )

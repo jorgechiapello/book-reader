@@ -28,7 +28,7 @@ def ssml_critic(llm: LLM) -> Agent:
     )
 
 
-def validation_task(agent: Agent) -> Task:
+def validation_task(agent: Agent, context: list[Task] = None) -> Task:
     """
     Task 3: Validate and critique the SSML
     
@@ -69,6 +69,7 @@ Output Format:
 
 Return ONLY valid SSML markup. Nothing else.""",
         agent=agent,
-        expected_output="Valid SSML document with original text preserved and no explanations or commentary"
+        expected_output="Valid SSML document with original text preserved and no explanations or commentary",
+        context=context
     )
 
