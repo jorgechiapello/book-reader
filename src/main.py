@@ -79,17 +79,30 @@ def speak_command(args: argparse.Namespace) -> None:
 
         print(f"Processing: {chapter['title']}")
 
-        # Use LLM-powered sentiment analysis
-        from workflows.workflow_styletts2 import run_styletts2_workflow
-        
-        run_styletts2_workflow(
-            text=text,
-            ollama_model=ollama_model,
-            voice_sample_path=voice_sample,
-            output_dir=chapters_dir,
-            chapter_title=chapter["title"],
-            chapter_filename=chapter["file"],
-        )
+        # Use LLM-powered sentiment analysis based on backend
+        if args.tts_backend == "indextts2":
+            from workflows.indextts2.workflow import run_indextts2_workflow
+            run_indextts2_workflow(
+                text=text,
+                ollama_model=ollama_model,
+                voice_sample_path=voice_sample,
+                output_dir=chapters_dir,
+                chapter_title=chapter["title"],
+                chapter_filename=chapter["file"],
+            )
+        elif args.tts_backend == "styletts2":
+            from workflows.styletts2.workflow import run_styletts2_workflow
+            run_styletts2_workflow(
+                text=text,
+                ollama_model=ollama_model,
+                voice_sample_path=voice_sample,
+                output_dir=chapters_dir,
+                chapter_title=chapter["title"],
+                chapter_filename=chapter["file"],
+            )
+        else:
+            # Fallback for XTTS or other backends if they don't use this workflow structure
+            print(f"Skipping CrewAI workflow for backend: {args.tts_backend}")
         
 
 
@@ -112,7 +125,7 @@ def build_parser() -> argparse.ArgumentParser:
     # TTS backend selection
     parser.add_argument(
         "--tts-backend",
-        choices=["xtts", "styletts2"],
+        choices=["xtts", "styletts2", "indextts2"],
         default="xtts",
         help="TTS backend to use (default: xtts)"
     )

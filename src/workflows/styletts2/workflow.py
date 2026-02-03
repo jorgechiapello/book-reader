@@ -17,7 +17,7 @@ from typing import List, Optional
 
 from crewai import Crew
 
-from workflows.tts_styletts2 import EmotionSegment, parse_ssml_to_segments, generate_audio_with_emotions
+from .engine import EmotionSegment, parse_ssml_to_segments, generate_audio_with_emotions
 
 from agents.emotional_analyst import emotional_analyst, analysis_task
 from agents.ssml_transcriber import ssml_transcriber, ssml_task
