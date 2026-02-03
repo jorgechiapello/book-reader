@@ -12,10 +12,9 @@ The agents work sequentially to produce cinematic, emotionally-aware SSML.
 import json
 import os
 import re
-from dataclasses import asdict, dataclass
-from typing import List, Optional
+from typing import List
 
-from crewai import Agent, Crew, LLM, Task
+from crewai import Crew
 
 from .tts_styletts2 import EmotionSegment, parse_ssml_to_segments, generate_audio_with_emotions
 

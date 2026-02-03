@@ -4,7 +4,7 @@ StyleTTS2 TTS backend with style/emotion and SSML support.
 
 import re
 from pathlib import Path
-from typing import List, Optional, TYPE_CHECKING
+from typing import List
 
 import numpy as np
 import soundfile as sf
@@ -131,32 +131,7 @@ def parse_ssml_and_generate(
     return wav
 
 
-def generate_audio_styletts2(
-    text: str,
-    output_path: Path,
-    voice_sample_path: Path,
-    style_ref_path: Optional[Path] = None,
-    alpha: float = 0.3,
-    beta: float = 0.7,
-    diffusion_steps: int = 5,
-    embedding_scale: float = 1.0,
-) -> None:
-    """Generate audio using StyleTTS2."""
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    model = _get_model()
-    ref_path = style_ref_path if style_ref_path else voice_sample_path
-    chunks = split_text(text)
-    sample_rate = 24000
 
-    all_audio = []
-    for chunk in chunks:
-        wav = parse_ssml_and_generate(
-            model, chunk, str(ref_path), alpha, beta, diffusion_steps, embedding_scale, sample_rate
-        )
-        all_audio.append(wav)
-
-    combined = np.concatenate(all_audio)
-    sf.write(str(output_path), combined, sample_rate)
 
 
 def generate_audio_with_emotions(

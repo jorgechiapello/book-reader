@@ -2,7 +2,7 @@ import argparse
 import json
 import os
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 try:
     from dotenv import load_dotenv
@@ -69,20 +69,12 @@ def speak_command(args: argparse.Namespace) -> None:
     chapters_dir = build_output_dir(output_dir, book_slug)
     voice_sample = resolve_voice_sample(args.voice, Path(args.voices_dir))
 
-    # Resolve style reference if provided
-    style_ref: Optional[Path] = None
-    if hasattr(args, "style_ref") and args.style_ref:
-        style_ref = Path(args.style_ref)
-        if not style_ref.exists():
-            raise FileNotFoundError(f"Style reference not found: {style_ref}")
-
     ollama_model = getattr(args, "ollama_model", "llama3.2")
 
     for chapter in manifest["chapters"]:
         chapter_path = chapters_dir / chapter["file"]
         if not chapter_path.exists():
             raise FileNotFoundError(f"Missing chapter file: {chapter_path}")
-        audio_path = chapters_dir / chapter["file"].replace(".txt", ".wav")
         text = chapter_path.read_text(encoding="utf-8")
 
         print(f"Processing: {chapter['title']}")
@@ -132,29 +124,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="XTTS model name (only for xtts backend)"
     )
 
-    # StyleTTS2-specific options
-    parser.add_argument(
-        "--style-ref",
-        help="Path to style reference audio (for styletts2 backend)"
-    )
-    parser.add_argument(
-        "--style-alpha",
-        type=float,
-        default=float(os.getenv("STYLETTS2_ALPHA", "0.3")),
-        help="StyleTTS2 alpha: 0=more target speaker, 1=more reference style (default: 0.3)"
-    )
-    parser.add_argument(
-        "--style-beta",
-        type=float,
-        default=float(os.getenv("STYLETTS2_BETA", "0.7")),
-        help="StyleTTS2 beta: style strength (default: 0.7)"
-    )
-    parser.add_argument(
-        "--diffusion-steps",
-        type=int,
-        default=int(os.getenv("STYLETTS2_DIFFUSION_STEPS", "5")),
-        help="StyleTTS2 diffusion steps, more=better quality but slower (default: 5)"
-    )
+
 
 
     parser.add_argument(

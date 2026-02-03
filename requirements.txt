@@ -12,7 +12,7 @@ python-dotenv==1.1.1
 crewai==1.9.3
 litellm==1.75.3
 tokenizers==0.19.1
-vulture==2.14
 # Optional: StyleTTS2 backend (uncomment to install)
 styletts2==0.1.6
 # Note: For sentiment analysis, install Ollama separately: brew install ollama
+ruff
