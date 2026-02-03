@@ -198,3 +198,78 @@ def generate_audio_with_emotions(
 
     combined = np.concatenate(all_audio)
     sf.write(str(output_path), combined, sample_rate)
+
+
+def parse_ssml_to_segments(ssml: str, text: str) -> List[EmotionSegment]:
+    """
+    Parse the SSML output and convert it into EmotionSegment objects
+    compatible with the existing TTS pipeline.
+    
+    Args:
+        ssml: The SSML markup from the Voice Director
+        text: Original text
+    
+    Returns:
+        List of EmotionSegment objects with inline SSML
+    """
+    segments = []
+    
+    # Remove the outer <speak> tags
+    content = re.sub(r'^<speak>\s*|\s*</speak>$', '', ssml.strip(), flags=re.DOTALL)
+    
+    # Split by break tags to find natural segments
+    parts = re.split(r'<break\s+time="[^"]+"\s*/>', content)
+    
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        
+        # Infer emotion from prosody attributes
+        emotion = "neutral"
+        
+        # Check for pitch/rate patterns that suggest emotions
+        if 'pitch="high"' in part or 'pitch="x-high"' in part:
+            if 'rate="fast"' in part or 'rate="x-fast"' in part:
+                emotion = "excited"
+            else:
+                emotion = "hopeful"
+        elif 'pitch="low"' in part or 'pitch="x-low"' in part:
+            if 'rate="slow"' in part or 'rate="x-slow"' in part:
+                emotion = "sad"
+            else:
+                emotion = "tense"
+        elif '<emphasis level="strong">' in part:
+            emotion = "dramatic"
+        elif 'rate="slow"' in part:
+            emotion = "calm"
+        
+        # Extract clean text for length estimation (rough)
+        clean_text = re.sub(r'<[^>]+>', '', part).strip()
+        
+        if clean_text:
+            # Get emotion parameters
+            params = EMOTION_PARAMS.get(emotion, EMOTION_PARAMS["neutral"])
+            
+            segments.append(EmotionSegment(
+                text=part,  # Keep SSML tags inline
+                emotion=emotion,
+                alpha=params["alpha"],
+                beta=params["beta"],
+                diffusion_steps=params["diffusion_steps"],
+                prosody=params["prosody"]
+            ))
+    
+    # If no segments were created, create one neutral segment
+    if not segments:
+        params = EMOTION_PARAMS["neutral"]
+        segments.append(EmotionSegment(
+            text=text,
+            emotion="neutral",
+            alpha=params["alpha"],
+            beta=params["beta"],
+            diffusion_steps=params["diffusion_steps"],
+            prosody=params["prosody"]
+        ))
+    
+    return segments
