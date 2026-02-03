@@ -101,7 +101,7 @@ def speak_command(args: argparse.Namespace) -> None:
                 chapter_filename=chapter["file"],
             )
         else:
-            # Fallback for XTTS or other backends if they don't use this workflow structure
+            # Fallback for other backends if they don't use this workflow structure
             print(f"Skipping CrewAI workflow for backend: {args.tts_backend}")
         
 
@@ -125,17 +125,12 @@ def build_parser() -> argparse.ArgumentParser:
     # TTS backend selection
     parser.add_argument(
         "--tts-backend",
-        choices=["xtts", "styletts2", "indextts2"],
-        default="xtts",
-        help="TTS backend to use (default: xtts)"
+        choices=["styletts2", "indextts2"],
+        default="styletts2",
+        help="TTS backend to use (default: styletts2)"
     )
 
-    # XTTS-specific options
-    parser.add_argument(
-        "--model",
-        default="tts_models/multilingual/multi-dataset/xtts_v2",
-        help="XTTS model name (only for xtts backend)"
-    )
+    # Sentiment analysis model
 
 
 

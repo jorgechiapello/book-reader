@@ -1,8 +1,6 @@
 beautifulsoup4==4.12.3
 ebooklib==0.18
 pypdf==4.2.0
-TTS==0.22.0
-transformers==4.40.0
 torch==2.5.1
 torchaudio==2.5.1
 numpy==1.26.4

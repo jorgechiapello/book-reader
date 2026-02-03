@@ -22,7 +22,7 @@ def ssml_transcriber(llm: LLM) -> Agent:
             Apply sparingly: 1–2 phrases per sentence
         - Handle multiple characters by switching voice tags
         - Include micro-pauses to simulate breathing
-        - Output well-formed SSML for XTTS
+        - Output well-formed SSML
         - No explanations or extra text
         """,
         verbose=True,
