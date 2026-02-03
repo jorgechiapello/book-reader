@@ -88,51 +88,18 @@ def speak_command(args: argparse.Namespace) -> None:
         print(f"Processing: {chapter['title']}")
 
         # Use LLM-powered sentiment analysis
-        from tts_styletts2 import generate_audio_with_emotions
-    
-        # Use CrewAI multi-agent workflow
-        from sentiment_crewai import process_chapter_with_crewai
+        from workflows.workflow_styletts2 import run_styletts2_workflow
         
-        print(f"  Analyzing sentiment with CrewAI + Ollama ({ollama_model})...")
-        segments, raw_ssml, mood_map = process_chapter_with_crewai(
+        run_styletts2_workflow(
             text=text,
-            model=ollama_model,
-        )
-        print(f"  Found {len(segments)} emotion segments")
-        
-        # Show emotion breakdown
-        emotions = {}
-        for seg in segments:
-            emotions[seg.emotion] = emotions.get(seg.emotion, 0) + 1
-        print(f"  Emotions: {emotions}")
-
-        # Save sentiment analysis to JSON file with SSML
-        sentiment_path = chapters_dir / chapter["file"].replace(".txt", ".json")
-        sentiment_data = {
-            "chapter_title": chapter["title"],
-            "segments": [seg.to_dict() for seg in segments],
-            "raw_ssml": raw_ssml
-        }
-        sentiment_path.write_text(json.dumps(sentiment_data, indent=2), encoding="utf-8")
-        print(f"  Saved sentiment analysis: {sentiment_path}")
-        
-        # Save raw SSML separately
-        ssml_path = chapters_dir / chapter["file"].replace(".txt", ".ssml")
-        ssml_path.write_text(raw_ssml, encoding="utf-8")
-        print(f"  Saved SSML: {ssml_path}")
-        
-        # Save mood map from the Narrative Psychologist
-        moodmap_path = chapters_dir / chapter["file"].replace(".txt", ".moodmap")
-        moodmap_path.write_text(mood_map, encoding="utf-8")
-        print(f"  Saved mood map: {moodmap_path}")
-
-        generate_audio_with_emotions(
-            segments=segments,
-            output_path=audio_path,
+            ollama_model=ollama_model,
             voice_sample_path=voice_sample,
+            output_dir=chapters_dir,
+            chapter_title=chapter["title"],
+            chapter_filename=chapter["file"],
         )
+        
 
-        print(f"Wrote audio: {audio_path}")
 
 
 def run_command(args: argparse.Namespace) -> None:

@@ -1,8 +1,8 @@
 from crewai import Agent, LLM, Task
 
-def voice_director(llm: LLM) -> Agent:
+def ssml_transcriber(llm: LLM) -> Agent:
     return Agent(
-        role="Audiobook Voice Director",
+        role="SSML Transcriber",
         goal="""
         Convert structured emotional segments into SSML.
         You DO NOT infer emotion; you execute it literally.
@@ -35,7 +35,7 @@ def ssml_task(agent: Agent, text: str) -> Task:
     """
     Task 2: Convert text + Mood Map into SSML
     
-    The Voice Director uses the Mood Map to create SSML with:
+    The SSML Transcriber uses the Mood Map to create SSML with:
     - <prosody> tags for rate and pitch control
     - <break> tags for dramatic pauses
     - <emphasis> tags for key phrases

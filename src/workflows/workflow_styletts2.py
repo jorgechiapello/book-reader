@@ -17,10 +17,10 @@ from typing import List, Optional
 
 from crewai import Agent, Crew, LLM, Task
 
-from tts_styletts2 import EmotionSegment, parse_ssml_to_segments
+from .tts_styletts2 import EmotionSegment, parse_ssml_to_segments, generate_audio_with_emotions
 
 from agents.emotional_analyst import emotional_analyst, analysis_task
-from agents.voice_director import voice_director, ssml_task
+from agents.ssml_transcriber import ssml_transcriber, ssml_task
 from agents.ssml_critic import ssml_critic, validation_task
 from agents.utils import local_llm
 
@@ -141,17 +141,17 @@ def process_chapter_with_crewai(
             
             # Create agents
             analyst_agent = emotional_analyst(llm)
-            director_agent = voice_director(llm)
+            transcriber_agent = ssml_transcriber(llm)
             critic_agent = ssml_critic(llm)
             
             # Create tasks for this chunk
             t1 = analysis_task(analyst_agent, chunk)
-            t2 = ssml_task(director_agent, chunk)
+            t2 = ssml_task(transcriber_agent, chunk)
             t3 = validation_task(critic_agent)
             
             # Create crew with sequential process
             crew = Crew(
-                agents=[analyst_agent, director_agent, critic_agent],
+                agents=[analyst_agent, transcriber_agent, critic_agent],
                 tasks=[t1, t2, t3],
                 verbose=True
             )
@@ -183,17 +183,17 @@ def process_chapter_with_crewai(
         
         # Create agents
         analyst_agent = emotional_analyst(llm)
-        director_agent = voice_director(llm)
+        transcriber_agent = ssml_transcriber(llm)
         critic_agent = ssml_critic(llm)
         
         # Create tasks
         t1 = analysis_task(analyst_agent, text)
-        t2 = ssml_task(director_agent, text)
+        t2 = ssml_task(transcriber_agent, text)
         t3 = validation_task(critic_agent)
         
         # Create crew with sequential process
         crew = Crew(
-            agents=[analyst_agent, director_agent, critic_agent],
+            agents=[analyst_agent, transcriber_agent, critic_agent],
             tasks=[t1, t2, t3],
             verbose=True
         )
@@ -216,6 +216,69 @@ def process_chapter_with_crewai(
         segments = parse_ssml_to_segments(raw_ssml, text)
     
     return segments, raw_ssml, mood_map
+
+
+def run_styletts2_workflow(
+    text: str,
+    ollama_model: str,
+    voice_sample_path: str,
+    output_dir: os.PathLike,
+    chapter_title: str,
+    chapter_filename: str,
+) -> None:
+    """
+    Run the full StyleTTS2 workflow:
+    1. Analyze text with CrewAI
+    2. Save analysis artifacts (JSON, SSML, MoodMap)
+    3. Generate audio using StyleTTS2
+    """
+    output_dir = os.path.normpath(output_dir)
+    print(f"  Analyzing sentiment with CrewAI + Ollama ({ollama_model})...")
+    
+    segments, raw_ssml, mood_map = process_chapter_with_crewai(
+        text=text,
+        model=ollama_model,
+    )
+    print(f"  Found {len(segments)} emotion segments")
+    
+    # Show emotion breakdown
+    emotions = {}
+    for seg in segments:
+        emotions[seg.emotion] = emotions.get(seg.emotion, 0) + 1
+    print(f"  Emotions: {emotions}")
+
+    # Save sentiment analysis to JSON file with SSML
+    sentiment_path = os.path.join(output_dir, chapter_filename.replace(".txt", ".json"))
+    sentiment_data = {
+        "chapter_title": chapter_title,
+        "segments": [seg.to_dict() for seg in segments],
+        "raw_ssml": raw_ssml
+    }
+    with open(sentiment_path, "w", encoding="utf-8") as f:
+        json.dump(sentiment_data, f, indent=2)
+    print(f"  Saved sentiment analysis: {sentiment_path}")
+    
+    # Save raw SSML separately
+    ssml_path = os.path.join(output_dir, chapter_filename.replace(".txt", ".ssml"))
+    with open(ssml_path, "w", encoding="utf-8") as f:
+        f.write(raw_ssml)
+    print(f"  Saved SSML: {ssml_path}")
+    
+    # Save mood map from the Narrative Psychologist
+    moodmap_path = os.path.join(output_dir, chapter_filename.replace(".txt", ".moodmap"))
+    with open(moodmap_path, "w", encoding="utf-8") as f:
+        f.write(mood_map)
+    print(f"  Saved mood map: {moodmap_path}")
+
+    # Generate Audio
+    audio_path = os.path.join(output_dir, chapter_filename.replace(".txt", ".wav"))
+    generate_audio_with_emotions(
+        segments=segments,
+        output_path=audio_path,
+        voice_sample_path=voice_sample_path,
+    )
+
+    print(f"Wrote audio: {audio_path}")
 
 
 def main():

@@ -70,20 +70,20 @@ Enable automatic emotion detection using a local LLM. The LLM analyzes the text,
 **Run with sentiment analysis (direct Ollama):**
 
 ```bash
-python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice joe --tts-backend styletts2 --sentiment run
+python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice joe --tts-backend styletts2 run
 ```
 
-**Run with CrewAI multi-agent workflow:**
+**Run with CrewAI multi-agent workflow (enabled by default):**
 
 ```bash
-python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice Heisenberg --tts-backend styletts2 --sentiment --sentiment-backend crewai run
+python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice Heisenberg --tts-backend styletts2 run
 ```
 
 **With a specific Ollama model:**
 
 ```bash
 python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice joe \
-    --tts-backend styletts2 --sentiment \
+    --tts-backend styletts2 \
     --ollama-model llama3.2:3b \
     run
 ```
