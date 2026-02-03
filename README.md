@@ -13,34 +13,41 @@ Local audiobook generator that parses TXT/EPUB/PDF into chapters and generates p
 
 ## TTS Backends
 
-This project supports two TTS backends:
+This project supports three TTS backends:
 
 | Backend | Strengths | Use Case |
 |---------|-----------|----------|
-| **XTTS** (default) | Stable, multilingual, good voice cloning | General audiobook generation |
-| **StyleTTS2** | Superior expressiveness, style/emotion control | When you want varied sentiments |
+| **StyleTTS2** (default) | Superior expressiveness, style/emotion control | Local high-quality narration |
+| **IndexTTS-2** | Natural language "soft instructions", duration control | Most expressive, cinematic narration |
+| **Qwen-TTS** | Dialogue specialized, long scripts | Books with heavy dialogue |
 
 ## Usage
 
-### Basic (XTTS backend)
+### StyleTTS2 (Local & Expressive)
 
-    # End-to-end generation
-    python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice joe --language en run
+    # End-to-end generation (uses CrewAI sentiment analysis by default)
+    python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice joe --tts-backend styletts2 run
 
     # Or step by step
     python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output ingest
-    python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice joe speak
+    python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice joe --tts-backend styletts2 speak
 
-### With StyleTTS2 (more expressive)
+### IndexTTS-2 (Package-based Integration)
 
-    # Basic StyleTTS2 - uses voice sample for both voice and style
-    python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice joe --tts-backend styletts2 run
+IndexTTS-2 uses "soft instructions" (natural language descriptions) to control emotion. This implementation runs as a native library in your environment.
 
-    # With separate style reference (e.g., excited reading)
-    python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice joe \
-        --tts-backend styletts2 \
-        --style-ref voices/joe_excited/sample.wav \
-        run
+**Prerequisites:**
+1. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+2. Download weights:
+   Place the IndexTTS-2 checkpoints (config.yaml and .safetensors) into `checkpoints/indextts2/` in the project root.
+
+**Run Workflow:**
+```bash
+python3 src/main.py run --input books/the-1000000-bank-note.pdf --output-dir output --voice joe --tts-backend indextts2
+```
 
 ### With LLM Sentiment Analysis (most expressive)
 
@@ -157,5 +164,7 @@ python src/sentiment_crewai.py
 
 - Chapter splitting is heuristic, especially for PDFs. If headings are missing, chapters are split by size.
 - Audio output is WAV for reliable concatenation across chunks.
-- StyleTTS2 requires more VRAM than XTTS (~6GB vs ~4GB).
-- Sentiment analysis requires Ollama running locally (localhost:11434).
+- StyleTTS2 is the recommended local backend (~6GB VRAM).
+- IndexTTS-2 runs as a direct Python library from a sibling repository.
+- Qwen-TTS still requires ComfyUI running at `localhost:8188`.
+- Sentiment analysis requires Ollama running locally (`localhost:11434`).
