@@ -22,19 +22,8 @@ from .tts_styletts2 import EmotionSegment, parse_ssml_to_segments, generate_audi
 from agents.emotional_analyst import emotional_analyst, analysis_task
 from agents.ssml_transcriber import ssml_transcriber, ssml_task
 from agents.ssml_critic import ssml_critic, validation_task
+from agents.styletts_interpreter import styletts_interpreter, style_parameters_task
 from agents.utils import local_llm
-
-
-# Sample dramatic text for testing
-SAMPLE_TEXT = """
-Now, something had been happening there a little before, which I did not 
-know anything about until a good many days afterwards, but I will tell you 
-about it now. Those two old brothers had been having a pretty hot argument 
-a couple of days before, and had ended by agreeing to decide it by a bet, 
-which is the English way of settling everything.
-"""
-
-
 
 
 
@@ -143,16 +132,18 @@ def process_chapter_with_crewai(
             analyst_agent = emotional_analyst(llm)
             transcriber_agent = ssml_transcriber(llm)
             critic_agent = ssml_critic(llm)
+            interpreter_agent = styletts_interpreter(llm)
             
             # Create tasks for this chunk
             t1 = analysis_task(analyst_agent, chunk)
             t2 = ssml_task(transcriber_agent, chunk)
             t3 = validation_task(critic_agent)
+            t4 = style_parameters_task(interpreter_agent)
             
             # Create crew with sequential process
             crew = Crew(
-                agents=[analyst_agent, transcriber_agent, critic_agent],
-                tasks=[t1, t2, t3],
+                agents=[analyst_agent, transcriber_agent, critic_agent, interpreter_agent],
+                tasks=[t1, t2, t3, t4],
                 verbose=True
             )
             
@@ -163,14 +154,40 @@ def process_chapter_with_crewai(
             chunk_mood_map = str(t1.output) if hasattr(t1, 'output') else ""
             all_mood_maps.append(f"\n=== CHUNK {i}/{len(text_chunks)} ===\n\n{chunk_mood_map}")
             
-            # Extract SSML (remove outer <speak> tags for merging)
-            chunk_ssml = str(result).strip()
-            chunk_ssml = re.sub(r'^<speak[^>]*>\s*|\s*</speak>$', '', chunk_ssml, flags=re.DOTALL)
-            all_ssml_parts.append(chunk_ssml)
+            # Capture the SSML from the critic task
+            chunk_ssml = str(t3.output) if hasattr(t3, 'output') else ""
+            # Remove output <speak> tags for merging logic
+            chunk_ssml_clean = re.sub(r'^<speak[^>]*>\s*|\s*</speak>$', '', chunk_ssml, flags=re.DOTALL)
+            all_ssml_parts.append(chunk_ssml_clean)
             
-            # Parse this chunk's SSML into segments
-            chunk_segments = parse_ssml_to_segments(f'<speak>{chunk_ssml}</speak>', chunk)
-            all_segments.extend(chunk_segments)
+            # Parse the JSON result from the interpreter
+            try:
+                # Cleaner JSON extraction just in case
+                json_str = str(result)
+                # If wrapped in markdown blocks
+                if "```json" in json_str:
+                    json_str = json_str.split("```json")[1].split("```")[0].strip()
+                elif "```" in json_str:
+                    json_str = json_str.split("```")[1].split("```")[0].strip()
+                
+                segment_data = json.loads(json_str)
+                
+                for item in segment_data:
+                    all_segments.append(EmotionSegment(
+                        text=item.get("text", ""),
+                        emotion=item.get("emotion", "neutral"),
+                        alpha=float(item.get("alpha", 0.3)),
+                        beta=float(item.get("beta", 0.7)),
+                        diffusion_steps=int(item.get("diffusion_steps", 5)),
+                        prosody=None # Interpreter handles params directly
+                    ))
+            except Exception as e:
+                print(f"Error parsing JSON from interpreter: {e}")
+                print(f"Raw output: {result}")
+                # Fallback to regex parsing if JSON fails (using the SSML)
+                print("Falling back to regex parsing...")
+                chunk_segments = parse_ssml_to_segments(f'<speak>{chunk_ssml_clean}</speak>', chunk)
+                all_segments.extend(chunk_segments)
         
         # Combine all SSML parts and mood maps
         raw_ssml = '<speak>\n' + '\n'.join(all_ssml_parts) + '\n</speak>'
@@ -185,16 +202,18 @@ def process_chapter_with_crewai(
         analyst_agent = emotional_analyst(llm)
         transcriber_agent = ssml_transcriber(llm)
         critic_agent = ssml_critic(llm)
+        interpreter_agent = styletts_interpreter(llm)
         
         # Create tasks
         t1 = analysis_task(analyst_agent, text)
         t2 = ssml_task(transcriber_agent, text)
         t3 = validation_task(critic_agent)
+        t4 = style_parameters_task(interpreter_agent)
         
         # Create crew with sequential process
         crew = Crew(
-            agents=[analyst_agent, transcriber_agent, critic_agent],
-            tasks=[t1, t2, t3],
+            agents=[analyst_agent, transcriber_agent, critic_agent, interpreter_agent],
+            tasks=[t1, t2, t3, t4],
             verbose=True
         )
         
@@ -205,15 +224,41 @@ def process_chapter_with_crewai(
         # Capture the mood map from the analysis task
         mood_map = str(t1.output) if hasattr(t1, 'output') else ""
         
-        # Extract the final SSML
-        raw_ssml = str(result).strip()
+        # Capture SSML from critic
+        raw_ssml = str(t3.output) if hasattr(t3, 'output') else ""
         
         # Ensure SSML has proper <speak> wrapper
         if not raw_ssml.startswith('<speak>'):
             raw_ssml = f'<speak>\n{raw_ssml}\n</speak>'
-        
-        # Parse SSML into segments
-        segments = parse_ssml_to_segments(raw_ssml, text)
+            
+        # Parse the JSON result from the interpreter
+        try:
+            # Cleaner JSON extraction just in case
+            json_str = str(result)
+            # If wrapped in markdown blocks
+            if "```json" in json_str:
+                json_str = json_str.split("```json")[1].split("```")[0].strip()
+            elif "```" in json_str:
+                json_str = json_str.split("```")[1].split("```")[0].strip()
+            
+            segment_data = json.loads(json_str)
+            
+            segments = []
+            for item in segment_data:
+                segments.append(EmotionSegment(
+                    text=item.get("text", ""),
+                    emotion=item.get("emotion", "neutral"),
+                    alpha=float(item.get("alpha", 0.3)),
+                    beta=float(item.get("beta", 0.7)),
+                    diffusion_steps=int(item.get("diffusion_steps", 5)),
+                    prosody=None # Interpreter handles params directly
+                ))
+        except Exception as e:
+            print(f"Error parsing JSON from interpreter: {e}")
+            print(f"Raw output: {result}")
+            # Fallback to regex parsing if JSON fails (using the SSML)
+            print("Falling back to regex parsing...")
+            segments = parse_ssml_to_segments(raw_ssml, text)
     
     return segments, raw_ssml, mood_map
 
@@ -291,15 +336,20 @@ def main():
     print("=" * 80)
     print()
     
+    sample_text = """
+    "I can't believe it!" she whispered, her voice trembling. "After all these years?"
+    He looked away, unable to meet her gaze. "I had no choice," he replied flatly.
+    """
+    
     print("Sample Text:")
     print("-" * 80)
-    print(SAMPLE_TEXT.strip())
+    print(sample_text.strip())
     print("-" * 80)
     print()
     
     # Process the sample text
     segments, raw_ssml, mood_map = process_chapter_with_crewai(
-        text=SAMPLE_TEXT.strip(),
+        text=sample_text.strip(),
         model="qwen2.5:14b",
     )
     
