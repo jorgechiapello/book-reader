@@ -17,11 +17,7 @@ from typing import List, Optional
 
 from crewai import Agent, Crew, LLM, Task
 
-# Import emotion parameters from the existing sentiment module
-import sys
-from pathlib import Path
-sys.path.append(str(Path(__file__).parent))
-from sentiment import EMOTION_PARAMS, EmotionSegment
+from tts_styletts2 import EMOTION_PARAMS, EmotionSegment
 
 
 # Sample dramatic text for testing
@@ -87,7 +83,6 @@ def create_emotional_analyst(llm: LLM) -> Agent:
         allow_delegation=False,
         llm=llm
     )
-
 
 
 def create_voice_director(llm: LLM) -> Agent:

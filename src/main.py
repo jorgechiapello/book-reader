@@ -76,9 +76,6 @@ def speak_command(args: argparse.Namespace) -> None:
         if not style_ref.exists():
             raise FileNotFoundError(f"Style reference not found: {style_ref}")
 
-    backend = getattr(args, "tts_backend", "xtts")
-    use_sentiment = getattr(args, "sentiment", False)
-    sentiment_backend = getattr(args, "sentiment_backend", "ollama")
     ollama_model = getattr(args, "ollama_model", "llama3.2")
 
     for chapter in manifest["chapters"]:
@@ -90,101 +87,51 @@ def speak_command(args: argparse.Namespace) -> None:
 
         print(f"Processing: {chapter['title']}")
 
-        if backend == "styletts2":
-            if use_sentiment:
-                # Use LLM-powered sentiment analysis
-                from tts_styletts2 import generate_audio_with_emotions
-                
-                if sentiment_backend == "crewai":
-                    # Use CrewAI multi-agent workflow
-                    from sentiment_crewai import process_chapter_with_crewai
-                    
-                    print(f"  Analyzing sentiment with CrewAI + Ollama ({ollama_model})...")
-                    segments, raw_ssml, mood_map = process_chapter_with_crewai(
-                        text=text,
-                        model=ollama_model,
-                    )
-                    print(f"  Found {len(segments)} emotion segments")
-                    
-                    # Show emotion breakdown
-                    emotions = {}
-                    for seg in segments:
-                        emotions[seg.emotion] = emotions.get(seg.emotion, 0) + 1
-                    print(f"  Emotions: {emotions}")
+        # Use LLM-powered sentiment analysis
+        from tts_styletts2 import generate_audio_with_emotions
+    
+        # Use CrewAI multi-agent workflow
+        from sentiment_crewai import process_chapter_with_crewai
+        
+        print(f"  Analyzing sentiment with CrewAI + Ollama ({ollama_model})...")
+        segments, raw_ssml, mood_map = process_chapter_with_crewai(
+            text=text,
+            model=ollama_model,
+        )
+        print(f"  Found {len(segments)} emotion segments")
+        
+        # Show emotion breakdown
+        emotions = {}
+        for seg in segments:
+            emotions[seg.emotion] = emotions.get(seg.emotion, 0) + 1
+        print(f"  Emotions: {emotions}")
 
-                    # Save sentiment analysis to JSON file with SSML
-                    sentiment_path = chapters_dir / chapter["file"].replace(".txt", ".json")
-                    sentiment_data = {
-                        "chapter_title": chapter["title"],
-                        "segments": [seg.to_dict() for seg in segments],
-                        "raw_ssml": raw_ssml
-                    }
-                    sentiment_path.write_text(json.dumps(sentiment_data, indent=2), encoding="utf-8")
-                    print(f"  Saved sentiment analysis: {sentiment_path}")
-                    
-                    # Save raw SSML separately
-                    ssml_path = chapters_dir / chapter["file"].replace(".txt", ".ssml")
-                    ssml_path.write_text(raw_ssml, encoding="utf-8")
-                    print(f"  Saved SSML: {ssml_path}")
-                    
-                    # Save mood map from the Narrative Psychologist
-                    moodmap_path = chapters_dir / chapter["file"].replace(".txt", ".moodmap")
-                    moodmap_path.write_text(mood_map, encoding="utf-8")
-                    print(f"  Saved mood map: {moodmap_path}")
-                else:
-                    # Use direct Ollama approach (existing)
-                    from sentiment import process_chapter_with_sentiment
-                    
-                    print(f"  Analyzing sentiment with Ollama ({ollama_model})...")
-                    segments = process_chapter_with_sentiment(
-                        text=text,
-                        model=ollama_model,
-                    )
-                    print(f"  Found {len(segments)} emotion segments")
-                    
-                    # Show emotion breakdown
-                    emotions = {}
-                    for seg in segments:
-                        emotions[seg.emotion] = emotions.get(seg.emotion, 0) + 1
-                    print(f"  Emotions: {emotions}")
+        # Save sentiment analysis to JSON file with SSML
+        sentiment_path = chapters_dir / chapter["file"].replace(".txt", ".json")
+        sentiment_data = {
+            "chapter_title": chapter["title"],
+            "segments": [seg.to_dict() for seg in segments],
+            "raw_ssml": raw_ssml
+        }
+        sentiment_path.write_text(json.dumps(sentiment_data, indent=2), encoding="utf-8")
+        print(f"  Saved sentiment analysis: {sentiment_path}")
+        
+        # Save raw SSML separately
+        ssml_path = chapters_dir / chapter["file"].replace(".txt", ".ssml")
+        ssml_path.write_text(raw_ssml, encoding="utf-8")
+        print(f"  Saved SSML: {ssml_path}")
+        
+        # Save mood map from the Narrative Psychologist
+        moodmap_path = chapters_dir / chapter["file"].replace(".txt", ".moodmap")
+        moodmap_path.write_text(mood_map, encoding="utf-8")
+        print(f"  Saved mood map: {moodmap_path}")
 
-                    # Save sentiment analysis to JSON file
-                    sentiment_path = chapters_dir / chapter["file"].replace(".txt", ".json")
-                    sentiment_data = {
-                        "chapter_title": chapter["title"],
-                        "segments": [seg.to_dict() for seg in segments]
-                    }
-                    sentiment_path.write_text(json.dumps(sentiment_data, indent=2), encoding="utf-8")
-                    print(f"  Saved sentiment analysis: {sentiment_path}")
+        generate_audio_with_emotions(
+            segments=segments,
+            output_path=audio_path,
+            voice_sample_path=voice_sample,
+        )
 
-                generate_audio_with_emotions(
-                    segments=segments,
-                    output_path=audio_path,
-                    voice_sample_path=voice_sample,
-                )
-            else:
-                from tts_styletts2 import generate_audio_styletts2
-
-                generate_audio_styletts2(
-                    text=text,
-                    output_path=audio_path,
-                    voice_sample_path=voice_sample,
-                    style_ref_path=style_ref,
-                    alpha=getattr(args, "style_alpha", 0.3),
-                    beta=getattr(args, "style_beta", 0.7),
-                    diffusion_steps=getattr(args, "diffusion_steps", 5),
-                )
-        else:
-            from tts import generate_audio
-
-            generate_audio(
-                text=text,
-                output_path=audio_path,
-                voice_sample_path=voice_sample,
-                language=args.language,
-                model_name=args.model,
-                device=args.device,
-            )
         print(f"Wrote audio: {audio_path}")
 
 
@@ -242,19 +189,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="StyleTTS2 diffusion steps, more=better quality but slower (default: 5)"
     )
 
-    # Sentiment analysis options
-    parser.add_argument(
-        "--sentiment",
-        action="store_true",
-        default=os.getenv("ENABLE_SENTIMENT", "false").lower() == "true",
-        help="Enable LLM-powered sentiment analysis for expressive reading (requires Ollama)"
-    )
-    parser.add_argument(
-        "--sentiment-backend",
-        choices=["ollama", "crewai"],
-        default=os.getenv("SENTIMENT_BACKEND", "ollama"),
-        help="Sentiment analysis backend: ollama (fast, single-pass) or crewai (sophisticated, multi-agent)"
-    )
+
     parser.add_argument(
         "--ollama-model",
         default=os.getenv("OLLAMA_MODEL", "llama3.2"),

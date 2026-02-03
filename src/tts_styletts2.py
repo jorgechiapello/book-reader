@@ -9,11 +9,39 @@ from typing import List, Optional, TYPE_CHECKING
 import numpy as np
 import soundfile as sf
 
-if TYPE_CHECKING:
-    from sentiment import EmotionSegment
+from dataclasses import asdict, dataclass
 
 # Lazy import to avoid loading heavy deps if not used
 _tts_model = None
+
+
+@dataclass
+class EmotionSegment:
+    """A text segment with associated emotion and TTS parameters."""
+    text: str
+    emotion: str
+    alpha: float
+    beta: float
+    diffusion_steps: int
+    prosody: dict = None  # New: SSML-like prosody (rate, pitch)
+
+    def to_dict(self):
+        return asdict(self)
+
+
+# Emotion to StyleTTS2 parameter mapping
+EMOTION_PARAMS = {
+    "excited": {"alpha": 0.1, "beta": 0.9, "diffusion_steps": 10, "prosody": {"rate": "medium", "pitch": "high"}},
+    "sad": {"alpha": 0.5, "beta": 0.5, "diffusion_steps": 8, "prosody": {"rate": "x-slow", "pitch": "low"}},
+    "calm": {"alpha": 0.3, "beta": 0.6, "diffusion_steps": 5, "prosody": {"rate": "slow", "pitch": "medium"}},
+    "tense": {"alpha": 0.2, "beta": 0.8, "diffusion_steps": 10, "prosody": {"rate": "medium", "pitch": "medium"}},
+    "humorous": {"alpha": 0.2, "beta": 0.7, "diffusion_steps": 7, "prosody": {"rate": "medium", "pitch": "high"}},
+    "neutral": {"alpha": 0.3, "beta": 0.7, "diffusion_steps": 5, "prosody": {"rate": "slow", "pitch": "medium"}},
+    "dramatic": {"alpha": 0.15, "beta": 0.85, "diffusion_steps": 10, "prosody": {"rate": "x-slow", "pitch": "medium"}},
+    "hopeful": {"alpha": 0.25, "beta": 0.75, "diffusion_steps": 7, "prosody": {"rate": "slow", "pitch": "medium"}},
+    "desperate": {"alpha": 0.4, "beta": 0.8, "diffusion_steps": 10, "prosody": {"rate": "medium", "pitch": "low"}},
+}
+
 
 
 def _get_model():
