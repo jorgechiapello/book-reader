@@ -1,29 +1,29 @@
 import json
 import os
-import re
 from pathlib import Path
-from typing import List, Optional
+from typing import List
+from pydub import AudioSegment
 
 from crewai import Crew
 
 from agents.emotional_analyst import emotional_analyst, analysis_task
-from agents.ssml_transcriber import ssml_transcriber, ssml_task
-from agents.ssml_critic import ssml_critic, validation_task
 from agents.indextts2_interpreter import indextts2_interpreter, indextts2_task
 from agents.utils import local_llm
 
-from .engine import generate_audio_with_indextts2
+from .integration import generate_audio_with_indextts2
 from ..styletts2.workflow import split_text_smartly
+
 
 def process_chapter_with_indextts2(
     text: str,
-    moodmap_path: Optional[str] = None,
     model: str = "qwen2.5:14b",
     ollama_url: str = "http://localhost:11434",
     chunk_size: int = 1000,
-) -> tuple[List[dict], str, str]:
+) -> List[dict]:
     """
-    Process a chapter using the CrewAI multi-agent workflow for IndexTTS-2.
+    Process text using 2-agent CrewAI workflow:
+    1. Emotional Analyst - analyzes text for emotional content
+    2. IndexTTS-2 Interpreter - converts analysis into soft instructions
     """
     llm = local_llm(model=model, base_url=ollama_url)
     
@@ -31,43 +31,28 @@ def process_chapter_with_indextts2(
     text_chunks = split_text_smartly(text, max_chunk_size=chunk_size)
     
     all_segments = []
-    all_ssml_parts = []
-    all_mood_maps = []
     
     for i, chunk in enumerate(text_chunks, 1):
         print(f"  Processing chunk {i}/{len(text_chunks)}...")
         
-        # Agents
-        analyst_agent = emotional_analyst(llm)
-        transcriber_agent = ssml_transcriber(llm)
-        critic_agent = ssml_critic(llm)
-        interpreter_agent = indextts2_interpreter(llm)
+        # Create agents
+        analyst = emotional_analyst(llm)
+        interpreter = indextts2_interpreter(llm)
         
-        # Tasks
-        t1 = analysis_task(analyst_agent, chunk)
-        t2 = ssml_task(transcriber_agent, chunk, context=[t1])
-        t3 = validation_task(critic_agent, context=[t1, t2])
-        t4 = indextts2_task(interpreter_agent, context=[t1, t2, t3])
+        # Create tasks
+        t1 = analysis_task(analyst, chunk)
+        t2 = indextts2_task(interpreter, context=[t1])
         
+        # Run crew
         crew = Crew(
-            agents=[analyst_agent, transcriber_agent, critic_agent, interpreter_agent],
-            tasks=[t1, t2, t3, t4],
+            agents=[analyst, interpreter],
+            tasks=[t1, t2],
             verbose=True
         )
         
         result = crew.kickoff()
         
-        # Capture mood map
-        chunk_mood_map = str(t1.output) if hasattr(t1, 'output') else ""
-        header = f"\n=== CHUNK {i}/{len(text_chunks)} ===\n\n"
-        all_mood_maps.append(header + chunk_mood_map)
-        
-        # Capture SSML
-        chunk_ssml = str(t3.output) if hasattr(t3, 'output') else ""
-        chunk_ssml_clean = re.sub(r'^<speak[^>]*>\s*|\s*</speak>$', '', chunk_ssml, flags=re.DOTALL)
-        all_ssml_parts.append(chunk_ssml_clean)
-        
-        # Parse JSON results
+        # Parse JSON results from interpreter
         try:
             json_str = str(result)
             if "```json" in json_str:
@@ -77,8 +62,9 @@ def process_chapter_with_indextts2(
             
             segment_data = json.loads(json_str)
             all_segments.extend(segment_data)
+            print(f"  ✓ Generated {len(segment_data)} segments from chunk {i}")
         except Exception as e:
-            print(f"  Error parsing JSON: {e}")
+            print(f"  ⚠ Error parsing JSON from chunk {i}: {e}")
             # Fallback segment
             all_segments.append({
                 "text": chunk,
@@ -86,15 +72,8 @@ def process_chapter_with_indextts2(
                 "emotion": "neutral",
                 "role": "Narrator"
             })
-
-    combined_ssml = '<speak>\n' + '\n'.join(all_ssml_parts) + '\n</speak>'
-    combined_moodmap = '\n\n'.join(all_mood_maps)
     
-    if moodmap_path:
-        with open(moodmap_path, "w", encoding="utf-8") as f:
-            f.write(combined_moodmap)
-
-    return all_segments, combined_ssml, combined_moodmap
+    return all_segments
 
 
 def run_indextts2_workflow(
@@ -106,77 +85,82 @@ def run_indextts2_workflow(
     chapter_filename: str,
 ) -> None:
     """
-    Full IndexTTS-2 workflow implementation.
+    IndexTTS-2 workflow using 2-agent CrewAI pipeline:
+    1. Generate emotional segments using agents
+    2. Send each segment to IndexTTS-2 server
+    3. Merge all audio segments
     """
     output_dir = os.path.normpath(output_dir)
-    moodmap_path = os.path.join(output_dir, chapter_filename.replace(".txt", ".moodmap"))
     
-    # 1. Analyze and Generate segments
-    print(f"  Running IndexTTS-2 Analysis...")
-    segments, raw_ssml, mood_map = process_chapter_with_indextts2(
-        text=text,
-        moodmap_path=moodmap_path,
-        model=ollama_model,
-    )
+    # 1. Generate emotional segments using agents
+    print(f"  Running 2-agent workflow for: {chapter_title}")
+    segments = process_chapter_with_indextts2(text, model=ollama_model)
     
-    # 2. Save Artifacts
+    # 2. Save segment data
     artifact_base = chapter_filename.replace(".txt", "")
-    with open(os.path.join(output_dir, f"{artifact_base}.json"), "w", encoding="utf-8") as f:
-        json.dump({"segments": segments, "ssml": raw_ssml}, f, indent=2)
+    segments_path = os.path.join(output_dir, f"{artifact_base}_segments.json")
+    with open(segments_path, "w", encoding="utf-8") as f:
+        json.dump(segments, f, indent=2)
+    print(f"  ✓ Saved {len(segments)} segments to: {segments_path}")
     
-    with open(os.path.join(output_dir, f"{artifact_base}.ssml"), "w", encoding="utf-8") as f:
-        f.write(raw_ssml)
-
-    # 3. Generate Audio
-    import soundfile as sf
-    import numpy as np
-    from pydub import AudioSegment
-    
+    # 3. Generate audio for each segment
     temp_files = []
     print(f"  Generating audio for {len(segments)} segments...")
     
     for idx, seg in enumerate(segments):
         temp_path = Path(output_dir) / f"temp_{idx}.wav"
-        generate_audio_with_indextts2(
-            text=seg["text"],
-            output_path=temp_path,
-            soft_instruction=seg["soft_instruction"],
-            reference_audio_path=voice_sample_path
-        )
-        temp_files.append(temp_path)
+        instruction = seg.get("soft_instruction", "Neutral narration")
+        print(f"  [{idx+1}/{len(segments)}] {instruction[:50]}...")
         
-    # 4. Merge Audio
+        success = generate_audio_with_indextts2(
+            text=seg["text"],
+            output_path=temp_path
+        )
+        
+        if success and temp_path.exists():
+            temp_files.append(temp_path)
+        else:
+            print(f"  ⚠ Warning: Failed to generate audio for segment {idx}")
+    
+    # 4. Merge audio segments
     if temp_files:
         final_audio_path = Path(output_dir) / chapter_filename.replace(".txt", ".wav")
         print(f"  Merging {len(temp_files)} segments into {final_audio_path}...")
         
         combined_audio = AudioSegment.empty()
         for p in temp_files:
-            seg_audio = AudioSegment.from_wav(str(p))
-            combined_audio += seg_audio
-            # Add a small crossfade or silence if needed?
-            # combined_audio += AudioSegment.silent(duration=100)
-            
+            try:
+                seg_audio = AudioSegment.from_wav(str(p))
+                combined_audio += seg_audio
+                # Add small pause between segments
+                combined_audio += AudioSegment.silent(duration=200)  # 200ms pause
+            except Exception as e:
+                print(f"  ⚠ Error loading {p}: {e}")
+        
         combined_audio.export(str(final_audio_path), format="wav")
         
-        # Cleanup
+        # Cleanup temp files
         for p in temp_files:
             try:
                 os.remove(p)
             except:
                 pass
-                
-        print(f"  IndexTTS-2 Audio generated: {final_audio_path}")
+        
+        print(f"  ✓ IndexTTS-2 Audio generated: {final_audio_path}")
     else:
-        print("  Warning: No audio segments generated.")
+        print("  ✗ Error: No audio segments generated.")
+
 
 if __name__ == "__main__":
     # Test script
-    test_text = "It was a dark and stormy night. 'Who's there?' she cried out in terror."
+    test_text = """It was a dark and stormy night. The wind howled through the trees.
+    'Who's there?' she cried out in terror. Her voice trembled with fear.
+    Suddenly, a figure appeared in the doorway. It was only her cat."""
+    
     run_indextts2_workflow(
         text=test_text,
         ollama_model="qwen2.5:14b",
-        voice_sample_path="voices/Narrator.wav", # Change as needed
+        voice_sample_path="voices/Heisenberg.wav",
         output_dir="output/test_indextts2",
         chapter_title="Test Chapter",
         chapter_filename="test.txt"

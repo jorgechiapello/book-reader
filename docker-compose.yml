@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  tts-engine:
+    build:
+      context: ./tts_service
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    volumes:
+      # Map your local 'voices' or 'output' folder so you can see generated files
+      - ./voices:/app/voices
+    environment:
+      - PYTHONUNBUFFERED=1

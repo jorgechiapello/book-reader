@@ -5,9 +5,9 @@ Local audiobook generator that parses TXT/EPUB/PDF into chapters and generates p
 ## Setup
 
 1. Create a virtual environment and install dependencies:
-   - `python3 -m venv .venv`
+   - `python3.11 -m venv .venv`
    - `source .venv/bin/activate`
-   - `pip3 install -r requirements.txt`
+   - `pip install -r requirements.txt`
 2. Install PyTorch (required by TTS engines):
    - Follow the official instructions at https://pytorch.org/get-started/locally/
 
@@ -32,22 +32,58 @@ This project supports three TTS backends:
     python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output ingest
     python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice joe --tts-backend styletts2 speak
 
-### IndexTTS-2 (Package-based Integration)
+### IndexTTS-2 (Docker Server Integration)
 
-IndexTTS-2 uses "soft instructions" (natural language descriptions) to control emotion. This implementation runs as a native library in your environment.
+IndexTTS-2 uses "soft instructions" (natural language descriptions) to control emotion. This implementation runs as a Docker service with the voice reference and neural network pre-loaded.
 
 **Prerequisites:**
-1. Install dependencies:
+1. Download the IndexTTS-2 model (CosyVoice):
    ```bash
-   pip install -r requirements.txt
+   # Create model directory
+   mkdir -p pretrained_models
+   
+   # Download CosyVoice-300M-SFT model
+   # Visit: https://www.modelscope.cn/models/iic/CosyVoice-300M-SFT
+   # Or use modelscope CLI to download automatically
    ```
-2. Download weights:
-   Place the IndexTTS-2 checkpoints (config.yaml and .safetensors) into `checkpoints/indextts2/` in the project root.
+
+2. Build and start the Docker server:
+   ```bash
+   # Rebuild to install new dependencies
+   docker-compose build
+   
+   # Start the server
+   docker-compose up
+   ```
+   This starts the IndexTTS-2 server at `http://localhost:8001` with the voice and model pre-loaded.
 
 **Run Workflow:**
+
+Full pipeline (ingest + speak):
 ```bash
-python3 src/main.py run --input books/the-1000000-bank-note.pdf --output-dir output --voice joe --tts-backend indextts2
+python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice Heisenberg --tts-backend indextts2 --ollama-model qwen2.5:14b run
 ```
+
+Or step by step:
+```bash
+# 1. Ingest the book into chapters
+python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output ingest
+
+# 2. Generate audio (requires Docker server running)
+python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice Heisenberg --tts-backend indextts2 --ollama-model qwen2.5:14b speak
+```
+
+**Test the workflow:**
+```bash
+python -m src.workflows.indextts2.workflow
+```
+
+**How it works:**
+1. CrewAI agents analyze text for emotional content and generate SSML
+2. Each text segment is sent to the Docker server at `http://localhost:8001/generate`
+3. The server synthesizes audio using the pre-loaded IndexTTS-2 model and voice
+4. Audio bytes are returned and saved locally
+5. All segments are merged into the final audio file
 
 ### With LLM Sentiment Analysis (most expressive)
 

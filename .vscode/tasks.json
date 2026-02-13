@@ -14,6 +14,43 @@
             "type": "shell",
             "command": "${workspaceFolder}/.venv/bin/ruff check . --fix",
             "problemMatcher": []
+        },
+        {
+            "label": "build-indextts2-server",
+            "type": "shell",
+            "command": "docker-compose build",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "build-indextts2-server --no-cache",
+            "type": "shell",
+            "command": "docker-compose build --no-cache",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "start-indextts2-server",
+            "type": "shell",
+            "command": "docker-compose up",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "isBackground": true,
+            "problemMatcher": []
+        },
+        {
+            "label": "stop-indextts2-server",
+            "type": "shell",
+            "command": "docker-compose down",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
         }
     ]
 }
