@@ -1,4 +1,7 @@
-# FastAPI dependencies
+# FastAPI dependencies for TTS service
 fastapi>=0.115.0
 uvicorn>=0.32.0
 python-multipart>=0.0.17
+
+# HuggingFace Hub for downloading model weights
+huggingface-hub>=0.20.0

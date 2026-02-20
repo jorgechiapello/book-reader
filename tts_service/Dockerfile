@@ -1,7 +1,7 @@
 # ============================================
 # Stage 1: Builder - Install and compile dependencies
 # ============================================
-FROM python:3.10-slim as builder
+FROM --platform=linux/amd64 python:3.10-slim as builder
 
 WORKDIR /app
 
@@ -29,7 +29,7 @@ RUN pip install --no-cache-dir torch torchaudio --index-url https://download.pyt
 # Install toml library for editing pyproject.toml
 RUN pip install --no-cache-dir toml
 
-# Patch pyproject.toml to remove CUDA torch and Chinese text processing
+# Patch pyproject.toml to fix torch versions for CPU
 RUN cd /app/index-tts && \
     python3 << 'EOF'
 import toml
@@ -49,22 +49,22 @@ for i, dep in enumerate(deps):
     elif dep.startswith('opencv-python=='):
         deps[i] = dep.replace('opencv-python==', 'opencv-python-headless==')
 
-# Remove wetextprocessing (Chinese text processing that requires pynini)
-data['project']['dependencies'] = [d for d in deps if 'wetextprocessing' not in d.lower()]
-
 # Write back
 with open('pyproject.toml', 'w') as f:
     toml.dump(data, f)
 
 print("Patched pyproject.toml:")
-print("- Removed wetextprocessing (Chinese text processing)")
 print("- Fixed torch versions for CPU")
 print("- Replaced opencv-python with opencv-python-headless")
 EOF
 
-# Install IndexTTS-2 dependencies (no cache, without Chinese text processing)
+# Install IndexTTS-2 dependencies (includes wetextprocessing with pynini)
 RUN cd /app/index-tts && \
     pip install --no-cache-dir -e ".[all]" || pip install --no-cache-dir -e .
+
+# Copy and install TTS service requirements (FastAPI, uvicorn, etc.)
+COPY requirements.txt /app/
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # Clean up pip cache and Python bytecode
 RUN find /usr/local/lib/python3.10 -name '*.pyc' -delete && \
@@ -73,7 +73,7 @@ RUN find /usr/local/lib/python3.10 -name '*.pyc' -delete && \
 # ============================================
 # Stage 2: Runtime - Minimal production image
 # ============================================
-FROM python:3.10-slim
+FROM --platform=linux/amd64 python:3.10-slim
 
 WORKDIR /app
 
@@ -96,15 +96,6 @@ COPY main.py /app/
 
 # Set Python path to include IndexTTS
 ENV PYTHONPATH="/app/index-tts"
-
-# Note: Model weights will need to be downloaded separately or mounted as volume:
-# Option 1: Download inside running container:
-#   docker exec -it <container> bash
-#   pip install huggingface-hub
-#   huggingface-cli download IndexTeam/IndexTTS-2 --local-dir /app/index-tts/checkpoints
-#
-# Option 2: Mount as volume (recommended):
-#   docker run -v /path/to/weights:/app/index-tts/checkpoints ...
 
 EXPOSE 8001
 

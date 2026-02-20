@@ -88,27 +88,36 @@ async def generate_audio(text: str, filename: str = "output.wav"):
             detail="Text parameter is required and cannot be empty"
         )
     
-    if voice_reference is None or not os.path.exists(voice_reference):
-        raise HTTPException(
-            status_code=503,
-            detail="Voice reference not available"
-        )
-    
     try:
         print(f"Generating audio for: {text[:50]}...")
         
         # Generate temporary output file
         temp_output = f"/tmp/{filename}"
         
-        # Generate audio using IndexTTS-2 with voice cloning
-        tts_model.infer(
-            spk_audio_prompt=voice_reference,
-            text=text,
-            output_path=temp_output,
-            use_emo_text=True,  # Use text to guide emotions
-            emo_alpha=0.6,  # Natural sounding speech
-            verbose=False
-        )
+        # Generate audio using IndexTTS-2
+        # If voice_reference is available, use voice cloning; otherwise use random voice
+        if voice_reference and os.path.exists(voice_reference):
+            print(f"Using voice cloning with: {voice_reference}")
+            tts_model.infer(
+                spk_audio_prompt=voice_reference,
+                text=text,
+                output_path=temp_output,
+                use_emo_text=True,  # Use text to guide emotions
+                emo_alpha=0.6,  # Natural sounding speech
+                verbose=False
+            )
+        else:
+            print("Using random voice (no voice reference provided)")
+            # Use a dummy path with use_random=True to generate with random speaker
+            tts_model.infer(
+                spk_audio_prompt="",  # Empty string as placeholder
+                text=text,
+                output_path=temp_output,
+                use_emo_text=True,
+                emo_alpha=0.6,
+                use_random=True,  # Generate with random speaker characteristics
+                verbose=False
+            )
         
         # Read the generated audio file
         if not os.path.exists(temp_output):
