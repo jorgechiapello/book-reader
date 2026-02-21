@@ -20,15 +20,16 @@ def generate_audio_with_indextts2(
     """
     url = "http://localhost:8001/generate"
 
-    params = {"text": text, "filename": output_path.name}
+    # Use JSON body (not query params) to avoid URL length limits for long text
+    payload = {"text": text, "filename": output_path.name}
     if voice is not None and voice.strip():
-        params["voice"] = voice.strip()
+        payload["voice"] = voice.strip()
 
     try:
         response = requests.post(
             url,
-            params=params,
-            timeout=120  # Increased timeout for longer text
+            json=payload,
+            timeout=300  # 5 min: IndexTTS-2 on CPU/emulation can be slow per segment
         )
         response.raise_for_status()
         

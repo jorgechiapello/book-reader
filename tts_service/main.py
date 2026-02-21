@@ -1,7 +1,14 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
+from pydantic import BaseModel
 import os
 import sys
+
+
+class GenerateRequest(BaseModel):
+    text: str
+    filename: str = "output.wav"
+    voice: str | None = None
 
 # Add IndexTTS to path
 sys.path.insert(0, '/app/index-tts')
@@ -74,23 +81,19 @@ def read_root():
 
 
 @app.post("/generate")
-async def generate_audio(
-    text: str,
-    voice: str | None = None,
-    filename: str = "output.wav",
-):
+async def generate_audio(req: GenerateRequest):
     """
     Generate audio using IndexTTS-2.
 
-    Args:
-        text: Text to synthesize into speech. Required. Cannot be empty.
-        voice: Voice name (e.g. "Heisenberg", "joe"). Must match a .wav file in
-               the voices directory. If omitted, defaults to "Heisenberg".
-        filename: Output filename for the generated WAV. Default: "output.wav".
+    Accepts JSON body: {"text": "...", "filename": "output.wav", "voice": "Heisenberg"}
+    Use JSON body (not query params) to avoid URL length limits for long text.
 
     Returns:
         Audio file as WAV bytes.
     """
+    text = req.text
+    voice = req.voice
+    filename = req.filename
     if tts_model is None:
         raise HTTPException(
             status_code=503,
