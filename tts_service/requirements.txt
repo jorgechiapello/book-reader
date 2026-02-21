@@ -2,6 +2,7 @@
 fastapi>=0.115.0
 uvicorn>=0.32.0
 python-multipart>=0.0.17
+toml>=0.10.2
 
 # HuggingFace Hub for downloading model weights
 huggingface-hub>=0.20.0
