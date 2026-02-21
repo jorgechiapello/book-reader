@@ -4,27 +4,30 @@ from pathlib import Path
 def generate_audio_with_indextts2(
     text: str,
     output_path: Path,
+    voice: str | None = None,
 ):
     """
     Calls the IndexTTS-2 server to generate audio.
-    
-    The server already has the voice reference and neural network loaded,
-    so we only need to send the text to synthesize.
-    
+
     Args:
-        text: The text to convert to speech
-        output_path: Local path where the audio file should be saved
-        
+        text: The text to convert to speech.
+        output_path: Local path where the audio file should be saved.
+        voice: Voice name (e.g. "Heisenberg", "joe"). Must match a .wav in the
+               server's voices directory. If omitted, server uses "Heisenberg".
+
     Returns:
-        bool: True if successful, False otherwise
+        bool: True if successful, False otherwise.
     """
     url = "http://localhost:8001/generate"
-    
+
+    params = {"text": text, "filename": output_path.name}
+    if voice is not None and voice.strip():
+        params["voice"] = voice.strip()
+
     try:
-        # Send text as query parameter to match server's FastAPI signature
         response = requests.post(
-            url, 
-            params={"text": text, "filename": output_path.name},
+            url,
+            params=params,
             timeout=120  # Increased timeout for longer text
         )
         response.raise_for_status()

@@ -67,7 +67,11 @@ def speak_command(args: argparse.Namespace) -> None:
     book_slug = slugify(args.title or input_path.stem)
     manifest = load_manifest(output_dir, book_slug)
     chapters_dir = build_output_dir(output_dir, book_slug)
-    voice_sample = resolve_voice_sample(args.voice, Path(args.voices_dir))
+    # IndexTTS2 uses voices from the TTS server; no local voice file needed
+    if args.tts_backend == "indextts2":
+        voice_sample = args.voice  # Voice name for API; None = server default
+    else:
+        voice_sample = resolve_voice_sample(args.voice, Path(args.voices_dir))
 
     ollama_model = getattr(args, "ollama_model", "llama3.2")
 

@@ -104,6 +104,8 @@ def run_indextts2_workflow(
     print(f"  ✓ Saved {len(segments)} segments to: {segments_path}")
     
     # 3. Generate audio for each segment
+    # For IndexTTS2, voice_sample_path is the voice name (from --voice) to request from the server
+    voice_name = Path(voice_sample_path).stem if voice_sample_path else None
     temp_files = []
     print(f"  Generating audio for {len(segments)} segments...")
     
@@ -114,7 +116,8 @@ def run_indextts2_workflow(
         
         success = generate_audio_with_indextts2(
             text=seg["text"],
-            output_path=temp_path
+            output_path=temp_path,
+            voice=voice_name,
         )
         
         if success and temp_path.exists():

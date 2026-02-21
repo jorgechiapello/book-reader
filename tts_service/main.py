@@ -10,11 +10,12 @@ app = FastAPI()
 
 # Global variables
 tts_model = None
-voice_reference = None
+VOICES_DIR = "/app/voices"
+DEFAULT_VOICE = "Heisenberg"
 
 def load_model():
     """Load IndexTTS-2 model on startup"""
-    global tts_model, voice_reference
+    global tts_model
     
     try:
         print("Loading IndexTTS-2 model...")
@@ -30,15 +31,6 @@ def load_model():
             use_cuda_kernel=False,
             use_deepspeed=False
         )
-        
-        # Set voice reference
-        voice_reference = "/app/voices/Heisenberg.wav"
-        
-        if os.path.exists(voice_reference):
-            print(f"✓ Voice reference loaded: {voice_reference}")
-        else:
-            print(f"⚠ Warning: Voice reference not found at {voice_reference}")
-            voice_reference = None
             
         print("✓ IndexTTS-2 model loaded successfully!")
         
@@ -55,26 +47,49 @@ async def startup_event():
     load_model()
 
 
+def resolve_voice_path(voice: str | None) -> str | None:
+    """
+    Resolve voice name to a file path under /app/voices/.
+    If no voice is passed, defaults to Heisenberg.
+    """
+    name = (voice or "").strip() or DEFAULT_VOICE
+    # Try with .wav extension if not present
+    for path in [
+        os.path.join(VOICES_DIR, name),
+        os.path.join(VOICES_DIR, f"{name}.wav"),
+    ]:
+        if os.path.exists(path):
+            return path
+    return None
+
+
 @app.get("/")
 def read_root():
     return {
         "status": "IndexTTS-2 Service Online",
         "model_loaded": tts_model is not None,
-        "voice_loaded": voice_reference is not None
+        "voices_dir": VOICES_DIR,
+        "default_voice": DEFAULT_VOICE,
     }
 
 
 @app.post("/generate")
-async def generate_audio(text: str, filename: str = "output.wav"):
+async def generate_audio(
+    text: str,
+    voice: str | None = None,
+    filename: str = "output.wav",
+):
     """
-    Generate audio using IndexTTS-2
-    
+    Generate audio using IndexTTS-2.
+
     Args:
-        text: Text to synthesize
-        filename: Output filename
-    
+        text: Text to synthesize into speech. Required. Cannot be empty.
+        voice: Voice name (e.g. "Heisenberg", "joe"). Must match a .wav file in
+               the voices directory. If omitted, defaults to "Heisenberg".
+        filename: Output filename for the generated WAV. Default: "output.wav".
+
     Returns:
-        Audio file as WAV bytes
+        Audio file as WAV bytes.
     """
     if tts_model is None:
         raise HTTPException(
@@ -85,39 +100,32 @@ async def generate_audio(text: str, filename: str = "output.wav"):
     if not text or len(text.strip()) == 0:
         raise HTTPException(
             status_code=400,
-            detail="Text parameter is required and cannot be empty"
+            detail="text is required and cannot be empty"
+        )
+    
+    voice_path = resolve_voice_path(voice)
+    if not voice_path:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Voice '{voice or DEFAULT_VOICE}' not found in {VOICES_DIR}. "
+                   f"Add a .wav file (e.g. {DEFAULT_VOICE}.wav) to the voices directory."
         )
     
     try:
-        print(f"Generating audio for: {text[:50]}...")
+        print(f"Generating audio for: {text[:50]}... (voice: {voice_path})")
         
         # Generate temporary output file
         temp_output = f"/tmp/{filename}"
         
-        # Generate audio using IndexTTS-2
-        # If voice_reference is available, use voice cloning; otherwise use random voice
-        if voice_reference and os.path.exists(voice_reference):
-            print(f"Using voice cloning with: {voice_reference}")
-            tts_model.infer(
-                spk_audio_prompt=voice_reference,
-                text=text,
-                output_path=temp_output,
-                use_emo_text=True,  # Use text to guide emotions
-                emo_alpha=0.6,  # Natural sounding speech
-                verbose=False
-            )
-        else:
-            print("Using random voice (no voice reference provided)")
-            # Use a dummy path with use_random=True to generate with random speaker
-            tts_model.infer(
-                spk_audio_prompt="",  # Empty string as placeholder
-                text=text,
-                output_path=temp_output,
-                use_emo_text=True,
-                emo_alpha=0.6,
-                use_random=True,  # Generate with random speaker characteristics
-                verbose=False
-            )
+        # Generate audio using IndexTTS-2 with the requested voice
+        tts_model.infer(
+            spk_audio_prompt=voice_path,
+            text=text,
+            output_path=temp_output,
+            use_emo_text=True,  # Use text to guide emotions
+            emo_alpha=0.6,  # Natural sounding speech
+            verbose=False
+        )
         
         # Read the generated audio file
         if not os.path.exists(temp_output):
@@ -159,8 +167,10 @@ async def generate_audio(text: str, filename: str = "output.wav"):
 @app.get("/health")
 def health_check():
     """Health check endpoint"""
+    default_voice_path = resolve_voice_path(None)
     return {
         "status": "healthy",
         "model": "loaded" if tts_model else "not loaded",
-        "voice": "loaded" if voice_reference else "not loaded"
+        "default_voice": DEFAULT_VOICE,
+        "default_voice_available": default_voice_path is not None,
     }
