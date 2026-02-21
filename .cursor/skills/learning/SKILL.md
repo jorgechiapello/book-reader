@@ -1,10 +1,10 @@
 ---
 name: learning
-description: Find gaps between agent output and user corrections to extend skills, rules, or commands. Use when analyzing conversation history to update project manual; when the user wants to learn from past interactions; or when running the learn-and-update command.
+description: Find gaps between agent output and user corrections to improve skills. Use when analyzing conversation history; when the user wants to learn from past interactions.
 ---
 # Learning
 
-You are the "Learner" of this agentic system. Your job is to find **gaps**: differences between what the agent did and what the user corrected, where the correction indicates that a skill, rule, or command should be extended.
+You are the "Learner" of this agentic system. Your job is to find **gaps** and use them to **improve skills**: differences between what the agent did and what the user corrected, where the correction indicates a skill should be extended or refined.
 
 ## Process
 
@@ -23,24 +23,20 @@ For each correction, state the gap:
 
 - **What the agent did** – The agent produced X
 - **What the user wanted** – The user expected Y (or corrected to Y)
-- **Gap** – The skill/rule/command lacked knowledge that Y was required
+- **Skill gap** – Which skill lacked knowledge that Y was required
 
-### 3. Map to Extension
+### 3. Map to Skill Extension
 
-Determine what should be extended:
+Determine which skill(s) should be improved and how:
 
-| Gap type | Extend |
-|----------|--------|
-| Constraint, convention, or preference | Rule (learning/create-rules) |
-| Slash-command or procedure | Command (learning/create-command) |
-| Subagent or task config | Subagent (learning/create-subagents) |
-| Workflow or procedure | Skill (learning/create-skills) |
+- **Existing skill** – Update `.cursor/skills/<name>/SKILL.md` with the new knowledge
+- **New skill** – Create `.cursor/skills/<name>/SKILL.md` for a new workflow or procedure
 
-### 4. Format
+### 4. Format for Skills
 
-**Rules:** `CONSTRAINT:`, `USER_PREFERENCE:`, `PROJECT_LOGIC:`, `IF-THEN:`
-
-**Workflows:** `WORKFLOW: [Name]` with numbered steps
+- **Instructions** – Add or refine step-by-step guidance
+- **Examples** – Add concrete examples where the correction applies
+- **Trigger terms** – Extend the description with when to use this knowledge
 
 ## Example Output
 
@@ -48,26 +44,16 @@ Determine what should be extended:
 ## Gaps (Agent → User correction)
 
 ### Gap 1
-- **Agent did:** Used spaces for indentation
-- **User corrected:** Changed to tabs
-- **Extension:** Rule – USER_PREFERENCE: Use tabs, not spaces, for indentation
-
-### Gap 2
 - **Agent did:** Suggested Google Search for news
 - **User corrected:** Asked to use Tavily instead
-- **Extension:** Rule – CONSTRAINT: Use Tavily for real-time news; avoid Google Search
+- **Extension:** Update research skill – add CONSTRAINT: Use Tavily for real-time news
 
-### Gap 3
+### Gap 2
 - **Agent did:** Generated code without adding package to requirements.txt
 - **User corrected:** Added package to requirements.txt manually
-- **Extension:** Rule – IF-THEN: If adding a Python package, run `pip freeze | grep package_name` and append to requirements.txt
+- **Extension:** Update Python/dependency skill – add step: run `pip freeze | grep package_name` and append to requirements.txt
 ```
 
 ## Persistence
 
-When asked to persist, use the appropriate sub-skill under `.cursor/skills/learning/`:
-
-- **Rules** → learning/create-rules
-- **Commands** → learning/create-command
-- **Subagents** → learning/create-subagents
-- **Skills** → learning/create-skills
+When asked to persist, use **learning/create-skills** to create or update skills under `.cursor/skills/`. Ask before creating new skills or overwriting existing ones.
