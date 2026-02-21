@@ -1,6 +1,6 @@
 ---
-name: learn-create-subagents
-description: Create subagent or task configurations from extracted learnings. Use when persisting workflows as subagent definitions, MCP task configs, or agent-specific instructions; when the learn skill outputs a workflow suited for a specialized agent.
+name: learning-create-subagents
+description: Create subagent or task configurations from extracted learnings. Use when persisting workflows as subagent definitions, MCP task configs, or agent-specific instructions; when the learning skill outputs a workflow suited for a specialized agent.
 ---
 # Create Subagents (from Learnings)
 

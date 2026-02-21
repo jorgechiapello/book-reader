@@ -1,6 +1,6 @@
 ---
-name: learn-create-command
-description: Create Cursor slash commands from extracted learnings. Use when persisting workflows or procedures as .cursor/commands/*.md; when the learn skill outputs a workflow to be saved as a command.
+name: learning-create-command
+description: Create Cursor slash commands from extracted learnings. Use when persisting workflows or procedures as .cursor/commands/*.md; when the learning skill outputs a workflow to be saved as a command.
 ---
 # Create Commands (from Learnings)
 
@@ -12,7 +12,7 @@ Create slash commands from extracted learnings. Use this skill when persisting w
 
 ## Format
 
-Commands are markdown files. Keep them light—objective, steps, optional output format. Avoid duplicating full methodology; reference the learn skill or other skills when needed.
+Commands are markdown files. Keep them light—objective, steps, optional output format. Avoid duplicating full methodology; reference the learning skill or other skills when needed.
 
 ```markdown
 # Command Name

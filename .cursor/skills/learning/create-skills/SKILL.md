@@ -1,6 +1,6 @@
 ---
-name: learn-create-skills
-description: Create Cursor skills from extracted learnings. Use when persisting workflows, procedures, or guidelines as .cursor/skills/*/SKILL.md; when the learn skill outputs a workflow suited for a reusable skill.
+name: learning-create-skills
+description: Create Cursor skills from extracted learnings. Use when persisting workflows, procedures, or guidelines as .cursor/skills/*/SKILL.md; when the learning skill outputs a workflow suited for a reusable skill.
 ---
 # Create Skills (from Learnings)
 

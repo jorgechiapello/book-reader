@@ -1,10 +1,10 @@
 ---
-name: learn-create-rules
-description: Create or update Cursor rules from extracted learnings. Use when persisting rules, workflows, or guidelines to .cursor/rules/ or AGENTS.md; when the learn skill outputs rules to be saved.
+name: learning-create-rules
+description: Create or update Cursor rules from gaps. Use when persisting rules to .cursor/rules/ or AGENTS.md; when the learning skill outputs rules to be saved.
 ---
 # Create Rules (from Learnings)
 
-Create or update rules from extracted learnings. Use this skill when persisting rules, workflows, or guidelines to `.cursor/rules/` or AGENTS.md.
+Create or update rules from gaps. Use this skill when persisting rules to `.cursor/rules/` or AGENTS.md.
 
 ## Targets
 
