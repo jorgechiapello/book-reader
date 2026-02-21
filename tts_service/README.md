@@ -16,6 +16,8 @@ Docker service for IndexTTS-2 text-to-speech engine with voice cloning support.
 ### Apple Silicon (M-series) Note
 This image is built for **AMD64/x86_64** architecture and runs via Rosetta 2 emulation on Apple Silicon Macs. This is necessary because the `pynini` dependency doesn't compile on ARM64. Performance is still good, with only ~10-20% overhead.
 
+Use `--platform linux/amd64` when building to target AMD64 explicitly. Docker Desktop may show an emulation warning when running the container—this is expected and safe to ignore.
+
 ## Quick Start
 
 ### 1. Build the Docker Image
@@ -165,29 +167,6 @@ Loading IndexTTS-2 model...
 
 Press `Ctrl+C` to stop following logs.
 
-## Container Management
-
-**Stop the service:**
-```bash
-docker stop tts-service
-```
-
-**Start the service:**
-```bash
-docker start tts-service
-```
-
-**Remove the container:**
-```bash
-docker stop tts-service
-docker rm tts-service
-```
-
-**Restart the service:**
-```bash
-docker restart tts-service
-```
-
 ## API Usage
 
 The service exposes the following endpoints:
@@ -313,6 +292,7 @@ tts_service/
 │   ├── Heisenberg.wav       # Default voice reference (~10 MB)
 │   └── README.md            # Voice file instructions
 ├── download_weights.py       # Model weights download script
+├── DOCKER.md                 # Docker commands & cache cleaning
 ├── Dockerfile                # Multi-stage Docker build (AMD64)
 ├── main.py                   # FastAPI TTS service
 ├── requirements.txt          # Python dependencies for download script
@@ -326,23 +306,6 @@ tts_service/
 └── ...                       # Other checkpoints & cache
 ```
 
-## Additional Commands
+## Docker Commands
 
-**Check if volumes are mounted correctly:**
-```bash
-# Check weights
-docker exec tts-service ls -lh /app/index-tts/checkpoints
-
-# Check voices
-docker exec tts-service ls -lh /app/voices
-```
-
-**Clean up Docker cache:**
-```bash
-docker system prune -a --volumes
-```
-
-**Rebuild without cache:**
-```bash
-docker build --no-cache --platform linux/amd64 -t indextts-service .
-```
+See [DOCKER.md](DOCKER.md) for common Docker commands and cache cleaning.
