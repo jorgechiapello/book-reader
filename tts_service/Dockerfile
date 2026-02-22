@@ -15,8 +15,10 @@ RUN apt-get update && apt-get install -y \
 
 # Install Python deps
 COPY requirements.txt .
+# Pin torch 2.5 / torchaudio 2.5: save() uses soundfile/sox (not TorchCodec).
+# TorchCodec in 2.9+ can introduce static in WAV output.
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir torch==2.5.0 torchaudio==2.5.0 --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir -r requirements.txt
 
 # Download IndexTTS source
@@ -34,9 +36,9 @@ for i, x in enumerate(deps):
     if x.startswith("opencv-python=="):
         deps[i] = x.replace("opencv-python==", "opencv-python-headless==")
     elif "torch==" in x and "torchaudio" not in x:
-        deps[i] = "torch>=2.0"
+        deps[i] = "torch>=2.0,<2.6"  # Match our pinned 2.5.0
     elif "torchaudio==" in x:
-        deps[i] = "torchaudio>=2.0"
+        deps[i] = "torchaudio>=2.0,<2.6"  # Match our pinned 2.5.0 (avoid 2.9+ TorchCodec)
 toml.dump(d, open("pyproject.toml", "w"))
 EOF
 
