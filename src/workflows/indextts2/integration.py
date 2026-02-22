@@ -5,6 +5,7 @@ def generate_audio_with_indextts2(
     text: str,
     output_path: Path,
     voice: str | None = None,
+    soft_instruction: str | None = None,
 ):
     """
     Calls the IndexTTS-2 server to generate audio.
@@ -14,16 +15,19 @@ def generate_audio_with_indextts2(
         output_path: Local path where the audio file should be saved.
         voice: Voice name (e.g. "Heisenberg", "joe"). Must match a .wav in the
                server's voices directory. If omitted, server uses "Heisenberg".
+        soft_instruction: Emotion/pacing hint from CrewAI (e.g. "Calm and confident narration").
+                         Guides IndexTTS-2 emotion synthesis. If omitted, model infers from text.
 
     Returns:
         bool: True if successful, False otherwise.
     """
     url = "http://localhost:8001/generate"
 
-    # Use JSON body (not query params) to avoid URL length limits for long text
     payload = {"text": text, "filename": output_path.name}
     if voice is not None and voice.strip():
         payload["voice"] = voice.strip()
+    if soft_instruction is not None and soft_instruction.strip():
+        payload["soft_instruction"] = soft_instruction.strip()
 
     try:
         response = requests.post(

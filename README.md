@@ -59,17 +59,27 @@ IndexTTS-2 uses "soft instructions" (natural language descriptions) to control e
 
 **Run Workflow:**
 
-Full pipeline (ingest + speak):
+Full pipeline (ingest → segments → synthesize):
 ```bash
 python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice Heisenberg --tts-backend indextts2 --ollama-model qwen2.5:14b run
 ```
 
-Or step by step:
+Or step by step (split pipeline):
 ```bash
 # 1. Ingest the book into chapters
 python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output ingest
 
-# 2. Generate audio (requires Docker server running)
+# 2. Generate emotional segments (CrewAI + Ollama; no TTS server needed)
+python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --tts-backend indextts2 --ollama-model qwen2.5:14b segments
+
+# 3. Synthesize audio from segments (requires Docker TTS server running)
+python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice Heisenberg --tts-backend indextts2 synthesize
+```
+
+**Why split?** You can review/edit `*_segments.json` before synthesis, retry TTS without re-running CrewAI, or use different voices without re-analyzing.
+
+Alternatively, use `speak` to run segments + synthesize in one step (same as before):
+```bash
 python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice Heisenberg --tts-backend indextts2 --ollama-model qwen2.5:14b speak
 ```
 

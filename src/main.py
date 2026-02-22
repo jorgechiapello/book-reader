@@ -107,13 +107,73 @@ def speak_command(args: argparse.Namespace) -> None:
         else:
             # Fallback for other backends if they don't use this workflow structure
             print(f"Skipping CrewAI workflow for backend: {args.tts_backend}")
-        
 
+
+def segments_command(args: argparse.Namespace) -> None:
+    """Generate emotional segments (CrewAI) for each chapter. IndexTTS-2 only."""
+    if args.tts_backend != "indextts2":
+        raise ValueError("segments command requires --tts-backend indextts2")
+
+    input_path = Path(args.input)
+    output_dir = Path(args.output_dir)
+    book_slug = slugify(args.title or input_path.stem)
+    manifest = load_manifest(output_dir, book_slug)
+    chapters_dir = build_output_dir(output_dir, book_slug)
+    ollama_model = getattr(args, "ollama_model", "llama3.2")
+
+    from workflows.indextts2.workflow import generate_segments
+
+    for chapter in manifest["chapters"]:
+        chapter_path = chapters_dir / chapter["file"]
+        if not chapter_path.exists():
+            raise FileNotFoundError(f"Missing chapter file: {chapter_path}")
+        text = chapter_path.read_text(encoding="utf-8")
+        print(f"Processing: {chapter['title']}")
+        generate_segments(
+            text=text,
+            ollama_model=ollama_model,
+            output_dir=chapters_dir,
+            chapter_title=chapter["title"],
+            chapter_filename=chapter["file"],
+        )
+
+
+def synthesize_command(args: argparse.Namespace) -> None:
+    """Synthesize audio from existing segments. IndexTTS-2 only."""
+    if args.tts_backend != "indextts2":
+        raise ValueError("synthesize command requires --tts-backend indextts2")
+
+    input_path = Path(args.input)
+    output_dir = Path(args.output_dir)
+    book_slug = slugify(args.title or input_path.stem)
+    manifest = load_manifest(output_dir, book_slug)
+    chapters_dir = build_output_dir(output_dir, book_slug)
+    voice_sample = args.voice  # Voice name for IndexTTS-2 API
+
+    from workflows.indextts2.workflow import synthesize_from_segments
+
+    for chapter in manifest["chapters"]:
+        artifact_base = chapter["file"].replace(".txt", "")
+        segments_path = chapters_dir / f"{artifact_base}_segments.json"
+        if not segments_path.exists():
+            print(f"Skipping {chapter['title']}: no segments file (run 'segments' first)")
+            continue
+        print(f"Processing: {chapter['title']}")
+        synthesize_from_segments(
+            voice_sample_path=voice_sample,
+            output_dir=chapters_dir,
+            chapter_title=chapter["title"],
+            chapter_filename=chapter["file"],
+        )
 
 
 def run_command(args: argparse.Namespace) -> None:
     ingest_command(args)
-    speak_command(args)
+    if args.tts_backend == "indextts2":
+        segments_command(args)
+        synthesize_command(args)
+    else:
+        speak_command(args)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -148,7 +208,15 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("ingest", help="Parse book into chapter text files")
     subparsers.add_parser("speak", help="Generate audio files for each chapter")
-    subparsers.add_parser("run", help="Ingest and speak in one step")
+    subparsers.add_parser(
+        "segments",
+        help="Generate emotional segments (CrewAI). IndexTTS-2 only. Requires ingest.",
+    )
+    subparsers.add_parser(
+        "synthesize",
+        help="Synthesize audio from segments. IndexTTS-2 only. Requires segments.",
+    )
+    subparsers.add_parser("run", help="Ingest and speak (or segments+synthesize for IndexTTS-2)")
     return parser
 
 
@@ -159,6 +227,10 @@ def main() -> None:
         ingest_command(args)
     elif args.command == "speak":
         speak_command(args)
+    elif args.command == "segments":
+        segments_command(args)
+    elif args.command == "synthesize":
+        synthesize_command(args)
     elif args.command == "run":
         run_command(args)
     else:

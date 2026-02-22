@@ -76,82 +76,107 @@ def process_chapter_with_indextts2(
     return all_segments
 
 
-def run_indextts2_workflow(
+def generate_segments(
     text: str,
     ollama_model: str,
-    voice_sample_path: str,
     output_dir: os.PathLike,
     chapter_title: str,
     chapter_filename: str,
-) -> None:
+) -> str:
     """
-    IndexTTS-2 workflow using 2-agent CrewAI pipeline:
-    1. Generate emotional segments using agents
-    2. Send each segment to IndexTTS-2 server
-    3. Merge all audio segments
+    Phase 1: Generate emotional segments using CrewAI. Saves *_segments.json.
+    Returns path to the segments file.
     """
     output_dir = os.path.normpath(output_dir)
-    
-    # 1. Generate emotional segments using agents
     print(f"  Running 2-agent workflow for: {chapter_title}")
     segments = process_chapter_with_indextts2(text, model=ollama_model)
-    
-    # 2. Save segment data
     artifact_base = chapter_filename.replace(".txt", "")
     segments_path = os.path.join(output_dir, f"{artifact_base}_segments.json")
     with open(segments_path, "w", encoding="utf-8") as f:
         json.dump(segments, f, indent=2)
     print(f"  ✓ Saved {len(segments)} segments to: {segments_path}")
-    
-    # 3. Generate audio for each segment
-    # For IndexTTS2, voice_sample_path is the voice name (from --voice) to request from the server
+    return segments_path
+
+
+def synthesize_from_segments(
+    voice_sample_path: str | None,
+    output_dir: os.PathLike,
+    chapter_title: str,
+    chapter_filename: str,
+) -> None:
+    """
+    Phase 2: Load segments from JSON and synthesize audio via IndexTTS-2 server.
+    Requires existing *_segments.json file.
+    """
+    output_dir = Path(output_dir)
+    artifact_base = chapter_filename.replace(".txt", "")
+    segments_path = output_dir / f"{artifact_base}_segments.json"
+    if not segments_path.exists():
+        raise FileNotFoundError(f"Segments file not found: {segments_path}. Run 'segments' first.")
+
+    with open(segments_path, "r", encoding="utf-8") as f:
+        segments = json.load(f)
+
     voice_name = Path(voice_sample_path).stem if voice_sample_path else None
     temp_files = []
     print(f"  Generating audio for {len(segments)} segments...")
-    
+
     for idx, seg in enumerate(segments):
-        temp_path = Path(output_dir) / f"temp_{idx}.wav"
+        temp_path = output_dir / f"temp_{idx}.wav"
         instruction = seg.get("soft_instruction", "Neutral narration")
         print(f"  [{idx+1}/{len(segments)}] {instruction[:50]}...")
-        
+
         success = generate_audio_with_indextts2(
             text=seg["text"],
             output_path=temp_path,
             voice=voice_name,
+            soft_instruction=instruction,
         )
-        
+
         if success and temp_path.exists():
             temp_files.append(temp_path)
         else:
             print(f"  ⚠ Warning: Failed to generate audio for segment {idx}")
-    
-    # 4. Merge audio segments
+
     if temp_files:
-        final_audio_path = Path(output_dir) / chapter_filename.replace(".txt", ".wav")
+        final_audio_path = output_dir / chapter_filename.replace(".txt", ".wav")
         print(f"  Merging {len(temp_files)} segments into {final_audio_path}...")
-        
+
         combined_audio = AudioSegment.empty()
         for p in temp_files:
             try:
                 seg_audio = AudioSegment.from_wav(str(p))
                 combined_audio += seg_audio
-                # Add small pause between segments
-                combined_audio += AudioSegment.silent(duration=200)  # 200ms pause
+                combined_audio += AudioSegment.silent(duration=200)
             except Exception as e:
                 print(f"  ⚠ Error loading {p}: {e}")
-        
+
         combined_audio.export(str(final_audio_path), format="wav")
-        
-        # Cleanup temp files
+
         for p in temp_files:
             try:
                 os.remove(p)
-            except:
+            except Exception:
                 pass
-        
+
         print(f"  ✓ IndexTTS-2 Audio generated: {final_audio_path}")
     else:
         print("  ✗ Error: No audio segments generated.")
+
+
+def run_indextts2_workflow(
+    text: str,
+    ollama_model: str,
+    voice_sample_path: str | None,
+    output_dir: os.PathLike,
+    chapter_title: str,
+    chapter_filename: str,
+) -> None:
+    """
+    Full IndexTTS-2 workflow: generate segments, then synthesize audio.
+    """
+    generate_segments(text, ollama_model, output_dir, chapter_title, chapter_filename)
+    synthesize_from_segments(voice_sample_path, output_dir, chapter_title, chapter_filename)
 
 
 if __name__ == "__main__":
