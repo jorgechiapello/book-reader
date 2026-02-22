@@ -26,7 +26,7 @@ from agents.styletts_interpreter import styletts_interpreter, style_parameters_t
 from agents.utils import local_llm
 
 
-def split_text_smartly(text: str, max_chunk_size: int = 1000) -> list[str]:
+def split_text_smartly(text: str, max_chunk_size: int = 2000) -> list[str]:
     """
     Split text into chunks while preserving sentence and paragraph boundaries.
     

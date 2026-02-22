@@ -155,7 +155,7 @@ def extract_epub(path: Path) -> List[Chapter]:
 def extract_pdf(path: Path) -> List[Chapter]:
     reader = PdfReader(str(path))
     pages = [page.extract_text() or "" for page in reader.pages]
-    merged = merge_pdf_lines("\n\n".join(pages))
+    merged = merge_pdf_lines("\n".join(pages))
     normalized = normalize_text(merged)
     splits = split_by_heading_markers(normalized)
     if not splits:

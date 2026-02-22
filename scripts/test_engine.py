@@ -44,7 +44,7 @@ def main():
         run_indextts2_workflow(
             text=test_text,
             ollama_model="llama3.2:3b",
-            voice_sample_path=str(voice_path) if voice_path else "",
+            voice=str(voice_path) if voice_path else None,
             output_dir=output_dir,
             chapter_title="Test Chapter",
             chapter_filename="test_output.txt"

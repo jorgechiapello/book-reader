@@ -78,11 +78,6 @@ python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output -
 
 **Why split?** You can review/edit `*_segments.json` before synthesis, retry TTS without re-running CrewAI, or use different voices without re-analyzing.
 
-Alternatively, use `speak` to run segments + synthesize in one step (same as before):
-```bash
-python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice Heisenberg --tts-backend indextts2 --ollama-model qwen2.5:14b speak
-```
-
 **Test the workflow:**
 ```bash
 python -m src.workflows.indextts2.workflow

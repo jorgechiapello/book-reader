@@ -67,6 +67,18 @@ def validate_emo_vector(value: Any) -> tuple[bool, str | None]:
     return True, None
 
 
+def normalize_emo_vector(value: list[float] | None) -> list[float] | None:
+    """Normalize the emotion vector so its elements sum to 1.0."""
+    if not value or len(value) != EMO_VECTOR_LENGTH:
+        return value
+        
+    total = sum(value)
+    if total <= 0:
+        return value
+        
+    return [round(v / total, 3) for v in value]
+
+
 def merge_segment_params(document: SegmentsDocument, segment: Segment) -> dict:
     """Merge document defaults with segment overrides for API payload."""
     emo_vec = segment.emo_vector
