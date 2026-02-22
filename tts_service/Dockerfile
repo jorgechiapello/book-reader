@@ -28,6 +28,7 @@ RUN wget -q https://github.com/index-tts/index-tts/archive/refs/heads/main.tar.g
     rm main.tar.gz
 
 # Fix CUDA-only deps automatically (opencv, torch versions for CPU)
+# hadolint ignore=SC2039,DL3025,DL4006
 RUN cd index-tts && python3 - << 'EOF'
 import toml
 d = toml.load("pyproject.toml")

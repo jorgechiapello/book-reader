@@ -174,6 +174,7 @@ python src/sentiment_crewai.py
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
+| --voice | None | Name of the voice sample (e.g. `joe` or `Heisenberg`) |
 | --style-ref | (voice sample) | Path to style reference audio |
 | --style-alpha | 0.3 | 0=more target speaker, 1=more reference style |
 | --style-beta | 0.7 | Style strength |

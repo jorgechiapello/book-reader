@@ -1,65 +1,69 @@
 from crewai import Agent, LLM, Task
 
+
 def indextts2_interpreter(llm: LLM) -> Agent:
     return Agent(
         role="IndexTTS-2 Emotional Director",
-        goal="Convert SSML-tagged text into natural language 'soft instructions' for IndexTTS-2.",
+        goal="Convert Mood Map analysis into IndexTTS-2 segment format with emo_vector.",
         backstory="""
         You are an elite voice director specializing in expressive, emotionally-driven text-to-speech.
-        You understand the nuance of human speech and how to describe it using natural language.
-        
-        IndexTTS-2 uses "soft instructions" to control emotion. Instead of setting technical parameters, 
-        you describe how the voice should sound.
-        
-        Your job is to:
-        1. Break the SSML text into natural segments.
-        2. For each segment, provide the clean text (without tags).
-        3. For each segment, write a concise but vivid "soft instruction" describing the emotional delivery.
-        
-        Examples of soft instructions:
-        - "Whispering with a hint of fear and urgency."
-        - "Energetic and joyful narration, very upbeat."
-        - "A cold, monotonous, and menacing tone."
-        - "Warm, comforting, and slow-paced storytelling."
-        - "Frantic and breathless, as if running."
+        IndexTTS-2 uses an 8-value emotion vector: [happy, angry, sad, afraid, disgusted, melancholic, surprised, calm].
+
+        Rules for emo_vector:
+        - Each value must be between 0 and 1 (no value > 1).
+        - The sum does NOT need to equal 1.
+        - Calm/neutral segments: use low values (e.g. calm 0.3–0.5, others near 0).
+        - Intense segments: dominant emotions can approach 0.8–1.0; others stay lower.
         """,
         verbose=True,
         allow_delegation=False,
-        llm=llm
+        llm=llm,
     )
 
 
-def indextts2_task(agent: Agent, context: list[Task] = None) -> Task:
+def indextts2_task(agent: Agent, context: list[Task] | None = None) -> Task:
     return Task(
         description="""
-        Analyze the SSML text provided (from SSML Critic) and convert it into a JSON list of segments for IndexTTS-2.
-        
-        GUIDELINES:
-        1. Break the text into logical segments based on <break/> tags and sentence boundaries.
-        2. "text" field must contain the plain text (NO SSML TAGS).
-        3. "soft_instruction" field must contain a short (3-8 words) natural language description of the emotion and pacing.
-        4. "role" field should be "Narrator" by default unless specified otherwise.
-        5. "emotion" field is a single keyword summary (e.g., "sad", "joyful", "neutral").
+        Use the Mood Map from the Emotional Analyst to produce a JSON list of segments for IndexTTS-2.
+
+        For each segment in the Mood Map:
+        1. "text": plain text (no SSML tags).
+        2. "emo_vector": array of exactly 8 floats [happy, angry, sad, afraid, disgusted, melancholic, surprised, calm].
+           - Each value 0–1. Calm segments use low values; intense segments can use 0.8–1.0 for dominant emotion.
+        3. "role": "Narrator" unless otherwise specified.
 
         OUTPUT FORMAT:
-        Return ONLY a raw JSON list of objects.
-        Example:
+        Return ONLY a raw JSON list. Example:
         [
-            {
-                "text": "I can't believe you're actually here.",
-                "soft_instruction": "Relieved and slightly breathless with surprise.",
-                "emotion": "surprise",
-                "role": "Narrator"
-            },
-            {
-                "text": "It has been so long.",
-                "soft_instruction": "Nostalgic and warm with a slow pace.",
-                "emotion": "nostalgic",
-                "role": "Narrator"
-            }
+            {"text": "It was a dark night.", "emo_vector": [0, 0, 0.15, 0.2, 0, 0.05, 0, 0.5], "role": "Narrator"},
+            {"text": "She screamed.", "emo_vector": [0, 0.1, 0.1, 0.9, 0, 0, 0.3, 0], "role": "Narrator"}
         ]
         """,
         agent=agent,
-        expected_output="A valid JSON list of segment objects with text and soft_instruction.",
-        context=context
+        expected_output="A valid JSON list of segment objects with text, emo_vector (8 floats), and role.",
+        context=context,
+    )
+
+
+def indextts2_retry_task(
+    agent: Agent,
+    invalid_segment: dict,
+    feedback: str,
+    context: list[Task] | None = None,
+) -> Task:
+    """Task to fix a segment with invalid emo_vector."""
+    return Task(
+        description=f"""
+        The following segment has an invalid emo_vector.
+
+        {feedback}
+
+        Invalid segment: {invalid_segment}
+
+        Fix the emo_vector and return ONLY a single-object JSON array with the corrected segment.
+        Example: [{{"text": "...", "emo_vector": [0, 0, 0.1, 0.2, 0, 0.05, 0, 0.6], "role": "Narrator"}}]
+        """,
+        agent=agent,
+        expected_output="A valid JSON list with one corrected segment object.",
+        context=context,
     )

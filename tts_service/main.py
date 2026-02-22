@@ -9,7 +9,10 @@ class GenerateRequest(BaseModel):
     text: str
     filename: str = "output.wav"
     voice: str | None = None
-    soft_instruction: str | None = None  # Emotion/pacing hint, e.g. "Calm and confident narration."
+    use_emo_text: bool = True
+    emo_alpha: float = 1
+    interval_silence: int = 200
+    emo_vector: list[float] | None = None
 
 # Add IndexTTS to path
 sys.path.insert(0, '/app/index-tts')
@@ -95,7 +98,10 @@ async def generate_audio(req: GenerateRequest):
     text = req.text
     voice = req.voice
     filename = req.filename
-    emo_text = req.soft_instruction
+    use_emo_text = req.use_emo_text
+    emo_alpha = req.emo_alpha
+    interval_silence = req.interval_silence
+    emo_vector = req.emo_vector
     if tts_model is None:
         raise HTTPException(
             status_code=503,
@@ -117,22 +123,22 @@ async def generate_audio(req: GenerateRequest):
         )
     
     try:
-        instr_suffix = f" [instruction: {emo_text[:50]}...]" if emo_text and len(emo_text) > 50 else (f" [instruction: {emo_text}]" if emo_text else "")
-        print(f"Generating audio for: {text[:50]}... (voice: {voice_path}){instr_suffix}")
+        emo_vec_str = f" emo_vector={emo_vector}" if emo_vector else ""
+        print(f"Generating audio for: {text[:50]}... (voice: {voice_path}, use_emo_text={use_emo_text}){emo_vec_str}")
         
         # Generate temporary output file
         temp_output = f"/tmp/{filename}"
         
-        # Generate audio using IndexTTS-2 with the requested voice
-        # emo_text: soft instruction from CrewAI (e.g. "Calm and confident narration") guides emotion
         tts_model.infer(
             spk_audio_prompt=voice_path,
             text=text,
             output_path=temp_output,
-            use_emo_text=True,
-            emo_text=emo_text or text,  # Use soft_instruction if provided, else main text
-            emo_alpha=0.6,
-            verbose=False
+            use_emo_text=use_emo_text if emo_vector is None else False,
+            emo_text=text,
+            emo_alpha=emo_alpha,
+            emo_vector=emo_vector,
+            interval_silence=interval_silence,
+            verbose=False,
         )
         
         # Read the generated audio file

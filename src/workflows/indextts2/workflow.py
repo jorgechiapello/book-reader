@@ -2,16 +2,68 @@ import json
 import os
 from pathlib import Path
 from typing import List
-from pydub import AudioSegment
 
 from crewai import Crew
+from pydub import AudioSegment
 
-from agents.emotional_analyst import emotional_analyst, analysis_task
-from agents.indextts2_interpreter import indextts2_interpreter, indextts2_task
+from agents.emotional_analyst import analysis_task, emotional_analyst
+from agents.indextts2_interpreter import (
+    indextts2_interpreter,
+    indextts2_retry_task,
+    indextts2_task,
+)
 from agents.utils import local_llm
 
-from .integration import generate_audio_with_indextts2
 from ..styletts2.workflow import split_text_smartly
+from .integration import generate_audio_with_indextts2
+from .loader import load_segments
+from .schema import Segment, SegmentsDocument, merge_segment_params, validate_emo_vector
+
+MAX_EMO_VECTOR_RETRIES = 2
+
+
+def _parse_interpreter_json(json_str: str) -> list[dict] | None:
+    """Parse JSON from interpreter output. Returns None on failure."""
+    if "```json" in json_str:
+        json_str = json_str.split("```json")[1].split("```")[0].strip()
+    elif "```" in json_str:
+        json_str = json_str.split("```")[1].split("```")[0].strip()
+    try:
+        return json.loads(json_str)
+    except json.JSONDecodeError:
+        return None
+
+
+def _validate_and_retry_segment(
+    segment: dict,
+    interpreter,
+    t1,
+) -> dict:
+    """Validate emo_vector; retry with interpreter if invalid. Returns corrected segment."""
+    emo_vec = segment.get("emo_vector")
+    valid, error = validate_emo_vector(emo_vec)
+    if valid:
+        return segment
+
+    for attempt in range(MAX_EMO_VECTOR_RETRIES):
+        feedback = error or "Invalid emo_vector."
+        retry_task = indextts2_retry_task(
+            interpreter, segment, feedback, context=[t1]
+        )
+        crew = Crew(agents=[interpreter], tasks=[retry_task], verbose=True)
+        result = crew.kickoff()
+        parsed = _parse_interpreter_json(str(result))
+        if parsed and len(parsed) >= 1:
+            fixed = parsed[0]
+            valid, err = validate_emo_vector(fixed.get("emo_vector"))
+            if valid:
+                return fixed
+            error = err
+        else:
+            error = "Could not parse corrected segment."
+
+    print(f"  ⚠ emo_vector invalid after {MAX_EMO_VECTOR_RETRIES} retries, using fallback")
+    return {**segment, "emo_vector": None}
 
 
 def process_chapter_with_indextts2(
@@ -22,57 +74,45 @@ def process_chapter_with_indextts2(
 ) -> List[dict]:
     """
     Process text using 2-agent CrewAI workflow:
-    1. Emotional Analyst - analyzes text for emotional content
-    2. IndexTTS-2 Interpreter - converts analysis into soft instructions
+    1. Emotional Analyst - Mood Map
+    2. IndexTTS-2 Interpreter - segments with emo_vector
+    Validates emo_vector and retries invalid segments.
     """
     llm = local_llm(model=model, base_url=ollama_url)
-    
-    print(f"  Splitting text into chunks...")
+
+    print("  Splitting text into chunks...")
     text_chunks = split_text_smartly(text, max_chunk_size=chunk_size)
-    
-    all_segments = []
-    
+
+    all_segments: list[dict] = []
+
     for i, chunk in enumerate(text_chunks, 1):
         print(f"  Processing chunk {i}/{len(text_chunks)}...")
-        
-        # Create agents
+
         analyst = emotional_analyst(llm)
         interpreter = indextts2_interpreter(llm)
-        
-        # Create tasks
+
         t1 = analysis_task(analyst, chunk)
         t2 = indextts2_task(interpreter, context=[t1])
-        
-        # Run crew
-        crew = Crew(
-            agents=[analyst, interpreter],
-            tasks=[t1, t2],
-            verbose=True
-        )
-        
+
+        crew = Crew(agents=[analyst, interpreter], tasks=[t1, t2], verbose=True)
         result = crew.kickoff()
-        
-        # Parse JSON results from interpreter
-        try:
-            json_str = str(result)
-            if "```json" in json_str:
-                json_str = json_str.split("```json")[1].split("```")[0].strip()
-            elif "```" in json_str:
-                json_str = json_str.split("```")[1].split("```")[0].strip()
-            
-            segment_data = json.loads(json_str)
-            all_segments.extend(segment_data)
-            print(f"  ✓ Generated {len(segment_data)} segments from chunk {i}")
-        except Exception as e:
-            print(f"  ⚠ Error parsing JSON from chunk {i}: {e}")
-            # Fallback segment
+
+        parsed = _parse_interpreter_json(str(result))
+        if not parsed:
+            print(f"  ⚠ Error parsing JSON from chunk {i}, using fallback")
             all_segments.append({
                 "text": chunk,
-                "soft_instruction": "Neutral narration",
-                "emotion": "neutral",
-                "role": "Narrator"
+                "emo_vector": None,
+                "role": "Narrator",
             })
-    
+            continue
+
+        for seg in parsed:
+            validated = _validate_and_retry_segment(seg, interpreter, t1)
+            all_segments.append(validated)
+
+        print(f"  ✓ Generated {len(parsed)} segments from chunk {i}")
+
     return all_segments
 
 
@@ -82,6 +122,9 @@ def generate_segments(
     output_dir: os.PathLike,
     chapter_title: str,
     chapter_filename: str,
+    use_emo_text: bool = False,
+    emo_alpha: float = 1,
+    interval_silence: int = 200,
 ) -> str:
     """
     Phase 1: Generate emotional segments using CrewAI. Saves *_segments.json.
@@ -89,20 +132,31 @@ def generate_segments(
     """
     output_dir = os.path.normpath(output_dir)
     print(f"  Running 2-agent workflow for: {chapter_title}")
-    segments = process_chapter_with_indextts2(text, model=ollama_model)
+
+    raw_segments = process_chapter_with_indextts2(text, model=ollama_model)
+
+    document = {
+        "use_emo_text": use_emo_text,
+        "emo_alpha": emo_alpha,
+        "interval_silence": interval_silence,
+        "segments": raw_segments,
+    }
+
     artifact_base = chapter_filename.replace(".txt", "")
     segments_path = os.path.join(output_dir, f"{artifact_base}_segments.json")
     with open(segments_path, "w", encoding="utf-8") as f:
-        json.dump(segments, f, indent=2)
-    print(f"  ✓ Saved {len(segments)} segments to: {segments_path}")
+        json.dump(document, f, indent=2)
+
+    print(f"  ✓ Saved {len(raw_segments)} segments to: {segments_path}")
     return segments_path
 
 
 def synthesize_from_segments(
-    voice_sample_path: str | None,
+    voice: str | None,
     output_dir: os.PathLike,
     chapter_title: str,
     chapter_filename: str,
+    tts_url: str = "http://localhost:8001",
 ) -> None:
     """
     Phase 2: Load segments from JSON and synthesize audio via IndexTTS-2 server.
@@ -111,26 +165,44 @@ def synthesize_from_segments(
     output_dir = Path(output_dir)
     artifact_base = chapter_filename.replace(".txt", "")
     segments_path = output_dir / f"{artifact_base}_segments.json"
+
     if not segments_path.exists():
-        raise FileNotFoundError(f"Segments file not found: {segments_path}. Run 'segments' first.")
+        raise FileNotFoundError(
+            f"Segments file not found: {segments_path}. Run 'segments' first."
+        )
 
-    with open(segments_path, "r", encoding="utf-8") as f:
-        segments = json.load(f)
+    doc = load_segments(segments_path)
+    voice_name = Path(voice).stem if voice else "Heisenberg"
+    doc = SegmentsDocument(
+        segments=doc.segments,
+        use_emo_text=doc.use_emo_text,
+        emo_alpha=doc.emo_alpha,
+        interval_silence=doc.interval_silence,
+    )
+    temp_files: List[Path] = []
+    print(f"  Generating audio for {chapter_title} ({len(doc.segments)} segments)...")
 
-    voice_name = Path(voice_sample_path).stem if voice_sample_path else None
-    temp_files = []
-    print(f"  Generating audio for {len(segments)} segments...")
-
-    for idx, seg in enumerate(segments):
+    for idx, segment in enumerate(doc.segments):
         temp_path = output_dir / f"temp_{idx}.wav"
-        instruction = seg.get("soft_instruction", "Neutral narration")
-        print(f"  [{idx+1}/{len(segments)}] {instruction[:50]}...")
+        params = merge_segment_params(doc, segment)
+
+        preview = (
+            f"emo_vector={params['emo_vector'][:4]}..."
+            if params["emo_vector"]
+            else "use_emo_text"
+        )
+        print(f"  [{idx + 1}/{len(doc.segments)}] {preview}")
 
         success = generate_audio_with_indextts2(
-            text=seg["text"],
+            text=params["text"],
             output_path=temp_path,
             voice=voice_name,
-            soft_instruction=instruction,
+            filename=temp_path.name,
+            use_emo_text=params["use_emo_text"],
+            emo_alpha=params["emo_alpha"],
+            interval_silence=params["interval_silence"],
+            emo_vector=params["emo_vector"],
+            tts_url=tts_url,
         )
 
         if success and temp_path.exists():
@@ -142,16 +214,22 @@ def synthesize_from_segments(
         final_audio_path = output_dir / chapter_filename.replace(".txt", ".wav")
         print(f"  Merging {len(temp_files)} segments into {final_audio_path}...")
 
-        combined_audio = AudioSegment.empty()
-        for p in temp_files:
+        combined = AudioSegment.empty()
+        for idx, p in enumerate(temp_files):
             try:
                 seg_audio = AudioSegment.from_wav(str(p))
-                combined_audio += seg_audio
-                combined_audio += AudioSegment.silent(duration=200)
+                combined += seg_audio
+                silence_ms = (
+                    doc.segments[idx].interval_silence
+                    if doc.segments[idx].interval_silence is not None
+                    else doc.interval_silence
+                )
+                if idx < len(temp_files) - 1:
+                    combined += AudioSegment.silent(duration=silence_ms)
             except Exception as e:
                 print(f"  ⚠ Error loading {p}: {e}")
 
-        combined_audio.export(str(final_audio_path), format="wav")
+        combined.export(str(final_audio_path), format="wav")
 
         for p in temp_files:
             try:
@@ -159,7 +237,7 @@ def synthesize_from_segments(
             except Exception:
                 pass
 
-        print(f"  ✓ IndexTTS-2 Audio generated: {final_audio_path}")
+        print(f"  ✓ IndexTTS-2 Audio generated for {chapter_title}: {final_audio_path}")
     else:
         print("  ✗ Error: No audio segments generated.")
 
@@ -167,29 +245,47 @@ def synthesize_from_segments(
 def run_indextts2_workflow(
     text: str,
     ollama_model: str,
-    voice_sample_path: str | None,
+    voice: str | None,
     output_dir: os.PathLike,
     chapter_title: str,
     chapter_filename: str,
+    use_emo_text: bool = False,
+    emo_alpha: float = 1,
+    interval_silence: int = 200,
+    tts_url: str = "http://localhost:8001",
 ) -> None:
     """
     Full IndexTTS-2 workflow: generate segments, then synthesize audio.
     """
-    generate_segments(text, ollama_model, output_dir, chapter_title, chapter_filename)
-    synthesize_from_segments(voice_sample_path, output_dir, chapter_title, chapter_filename)
+    generate_segments(
+        text=text,
+        ollama_model=ollama_model,
+        output_dir=output_dir,
+        chapter_title=chapter_title,
+        chapter_filename=chapter_filename,
+        use_emo_text=use_emo_text,
+        emo_alpha=emo_alpha,
+        interval_silence=interval_silence,
+    )
+    synthesize_from_segments(
+        voice=voice,
+        output_dir=output_dir,
+        chapter_title=chapter_title,
+        chapter_filename=chapter_filename,
+        tts_url=tts_url,
+    )
 
 
 if __name__ == "__main__":
-    # Test script
     test_text = """It was a dark and stormy night. The wind howled through the trees.
     'Who's there?' she cried out in terror. Her voice trembled with fear.
     Suddenly, a figure appeared in the doorway. It was only her cat."""
-    
+
     run_indextts2_workflow(
         text=test_text,
         ollama_model="qwen2.5:14b",
-        voice_sample_path="voices/Heisenberg.wav",
+        voice="Heisenberg",
         output_dir="output/test_indextts2",
         chapter_title="Test Chapter",
-        chapter_filename="test.txt"
+        chapter_filename="test.txt",
     )
