@@ -15,6 +15,8 @@ import re
 from pathlib import Path
 from typing import List, Optional
 
+from text_utils import split_text_smartly
+
 from crewai import Crew
 
 from .engine import EmotionSegment, parse_ssml_to_segments, generate_audio_with_emotions
@@ -26,69 +28,6 @@ from agents.styletts_interpreter import styletts_interpreter, style_parameters_t
 from agents.utils import local_llm
 
 
-def split_text_smartly(text: str, max_chunk_size: int = 2000) -> list[str]:
-    """
-    Split text into chunks while preserving sentence and paragraph boundaries.
-    
-    This ensures the Emotional Analyst receives text with natural structure,
-    which helps it produce better mood maps.
-    
-    Args:
-        text: The full text to split
-        max_chunk_size: Maximum characters per chunk (soft limit)
-    
-    Returns:
-        List of text chunks with preserved structure
-    """
-    # Split by paragraphs first (preserves major structure)
-    paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
-    
-    chunks = []
-    current_chunk = ""
-    
-    for paragraph in paragraphs:
-        # If the paragraph itself is larger than max_chunk_size, we MUST split it
-        if len(paragraph) > max_chunk_size:
-            # If we had a pending chunk, save it first
-            if current_chunk:
-                chunks.append(current_chunk.strip())
-                current_chunk = ""
-            
-            # Split the large paragraph by sentences
-            sentences = re.split(r'(?<=[.!?])\s+', paragraph)
-            for sentence in sentences:
-                if current_chunk and len(current_chunk) + len(sentence) + 1 > max_chunk_size:
-                    chunks.append(current_chunk.strip())
-                    current_chunk = sentence
-                else:
-                    if current_chunk:
-                        current_chunk += " " + sentence
-                    else:
-                        current_chunk = sentence
-            
-            # Save the last part of the split paragraph
-            if current_chunk:
-                chunks.append(current_chunk.strip())
-                current_chunk = ""
-            continue
-
-        # If adding this paragraph would exceed the limit
-        if current_chunk and len(current_chunk) + len(paragraph) + 2 > max_chunk_size:
-            # Save current chunk and start new one with this paragraph
-            chunks.append(current_chunk.strip())
-            current_chunk = paragraph
-        else:
-            # Add paragraph to current chunk
-            if current_chunk:
-                current_chunk += "\n\n" + paragraph
-            else:
-                current_chunk = paragraph
-    
-    # Add the last chunk
-    if current_chunk:
-        chunks.append(current_chunk.strip())
-    
-    return chunks if chunks else [text]
 
 
 def process_chapter_with_crewai(

@@ -1,169 +1,54 @@
 import json
 import os
-import sys
-import uuid
 from pathlib import Path
-from typing import Dict, Iterator, List
+from typing import List
 
-from crewai import Crew
 from pydub import AudioSegment
 
-from agents.emotional_analyst import analysis_task, emotional_analyst
-from agents.indextts2_interpreter import (
-    indextts2_interpreter,
-    indextts2_retry_task,
-    indextts2_task,
-)
-from agents.utils import local_llm
-
-from ..styletts2.workflow import split_text_smartly
+from text_utils import split_text_smartly
 from .integration import generate_audio_with_indextts2
 from .loader import load_segments
-from .schema import Segment, SegmentsDocument, merge_segment_params, normalize_emo_vector, validate_emo_vector
-
-MAX_EMO_VECTOR_RETRIES = 2
-
-
-def _parse_interpreter_json(json_str: str) -> list[dict] | None:
-    """Parse JSON from interpreter output. Returns None on failure."""
-    if "```json" in json_str:
-        json_str = json_str.split("```json")[1].split("```")[0].strip()
-    elif "```" in json_str:
-        json_str = json_str.split("```")[1].split("```")[0].strip()
-    try:
-        return json.loads(json_str)
-    except json.JSONDecodeError:
-        return None
-
-
-def _validate_and_retry_segment(
-    segment: dict,
-    interpreter,
-    t1,
-) -> dict:
-    """Validate emo_vector; retry with interpreter if invalid. Returns corrected segment."""
-    emo_vec = segment.get("emo_vector")
-    if emo_vec:
-        segment["emo_vector"] = normalize_emo_vector(emo_vec)
-        emo_vec = segment["emo_vector"]
-        
-    valid, error = validate_emo_vector(emo_vec)
-    if valid:
-        return segment
-
-    for attempt in range(MAX_EMO_VECTOR_RETRIES):
-        feedback = error or "Invalid emo_vector."
-        retry_task = indextts2_retry_task(
-            interpreter, segment, feedback, context=[t1]
-        )
-        crew = Crew(agents=[interpreter], tasks=[retry_task], verbose=True)
-        result = crew.kickoff()
-        parsed = _parse_interpreter_json(str(result))
-        if parsed and len(parsed) >= 1:
-            fixed = parsed[0]
-            fixed_vec = fixed.get("emo_vector")
-            if fixed_vec:
-                fixed["emo_vector"] = normalize_emo_vector(fixed_vec)
-                fixed_vec = fixed["emo_vector"]
-                
-            valid, err = validate_emo_vector(fixed_vec)
-            if valid:
-                print(f"  ✓ Fixed invalid emo_vector on attempt {attempt+1}")
-                return fixed
-            else:
-                error = err
-        else:
-            error = "Could not parse corrected segment."
-
-    print(f"  ⚠ emo_vector invalid after {MAX_EMO_VECTOR_RETRIES} retries, using fallback")
-    return {**segment, "emo_vector": None}
-
-
-def process_chapter_with_indextts2(
-    text: str,
-    model: str = "qwen2.5:14b",
-    ollama_url: str = "http://localhost:11434",
-    chunk_size: int = 1000,
-) -> Iterator[List[dict]]:
-    """
-    Process text using 2-agent CrewAI workflow:
-    1. Emotional Analyst - Mood Map
-    2. IndexTTS-2 Interpreter - segments with emo_vector
-    Validates emo_vector and retries invalid segments.
-    """
-    llm = local_llm(model=model, base_url=ollama_url)
-
-    print("  Splitting text into chunks...")
-    text_chunks = split_text_smartly(text, max_chunk_size=chunk_size)
-
-    for i, chunk in enumerate(text_chunks, 1):
-        print(f"  Processing chunk {i}/{len(text_chunks)}...")
-
-        analyst = emotional_analyst(llm)
-        interpreter = indextts2_interpreter(llm)
-
-        t1 = analysis_task(analyst, chunk)
-        t2 = indextts2_task(interpreter, context=[t1])
-
-        crew = Crew(agents=[analyst, interpreter], tasks=[t1, t2], verbose=True)
-        result = crew.kickoff()
-
-        parsed = _parse_interpreter_json(str(result))
-        if not parsed:
-            print(f"  ⚠ Error parsing JSON from chunk {i}, using fallback")
-            yield [{
-                "text": chunk,
-                "emo_vector": None,
-                "role": "Narrator",
-            }]
-            continue
-
-        chunk_segments = []
-        for seg in parsed:
-            validated = _validate_and_retry_segment(seg, interpreter, t1)
-            chunk_segments.append(validated)
-
-        print(f"  ✓ Generated {len(parsed)} segments from chunk {i}")
-        yield chunk_segments
+from .schema import Segment, SegmentsDocument, merge_segment_params
 
 
 def generate_segments(
     text: str,
-    ollama_model: str,
     output_dir: os.PathLike,
     chapter_title: str,
     chapter_filename: str,
-    use_emo_text: bool = False,
-    emo_alpha: float = 1,
+    emo_alpha: float = 0.5,
     interval_silence: int = 200,
+    chunk_size: int = 500,
 ) -> str:
     """
-    Phase 1: Generate emotional segments using CrewAI. Saves *_segments.json.
-    Returns path to the segments file.
+    Phase 1: Split text into segments and save *_segments.json.
+
+    Emotion is handled by IndexTTS-2's built-in use_emo_text inference —
+    no LLM calls required. Each segment is a plain prose chunk produced by
+    the rule-based split_text_smartly splitter.
+
+    Returns the path to the segments file.
     """
     output_dir = os.path.normpath(output_dir)
-    print(f"  Running 2-agent workflow for: {chapter_title}")
+    print(f"  Splitting text into segments for: {chapter_title}")
+
+    chunks = split_text_smartly(text, max_chunk_size=chunk_size)
+    segments = [Segment(text=chunk) for chunk in chunks]
 
     artifact_base = chapter_filename.replace(".txt", "")
     segments_path = os.path.join(output_dir, f"{artifact_base}_segments.json")
-    
-    raw_segments: list[dict] = []
-    
-    # Process chunks and save incrementally
-    for chunk_segments in process_chapter_with_indextts2(text, model=ollama_model):
-        raw_segments.extend(chunk_segments)
-        
-        document = {
-            "use_emo_text": use_emo_text,
-            "emo_alpha": emo_alpha,
-            "interval_silence": interval_silence,
-            "segments": raw_segments,
-        }
-        
-        with open(segments_path, "w", encoding="utf-8") as f:
-            json.dump(document, f, indent=2)
 
-    print(f"  ✓ Saved {len(raw_segments)} segments to: {segments_path}")
+    document = {
+        "use_emo_text": True,
+        "emo_alpha": emo_alpha,
+        "interval_silence": interval_silence,
+        "segments": [{"text": seg.text} for seg in segments],
+    }
+
+    with open(segments_path, "w", encoding="utf-8") as f:
+        json.dump(document, f, indent=2)
+
+    print(f"  ✓ Saved {len(segments)} segments to: {segments_path}")
     return segments_path
 
 
@@ -260,12 +145,10 @@ def synthesize_from_segments(
 
 def run_indextts2_workflow(
     text: str,
-    ollama_model: str,
     voice: str | None,
     output_dir: os.PathLike,
     chapter_title: str,
     chapter_filename: str,
-    use_emo_text: bool = False,
     emo_alpha: float = 1,
     interval_silence: int = 200,
     tts_url: str = "http://localhost:8001",
@@ -275,11 +158,9 @@ def run_indextts2_workflow(
     """
     generate_segments(
         text=text,
-        ollama_model=ollama_model,
         output_dir=output_dir,
         chapter_title=chapter_title,
         chapter_filename=chapter_filename,
-        use_emo_text=use_emo_text,
         emo_alpha=emo_alpha,
         interval_silence=interval_silence,
     )
@@ -299,7 +180,6 @@ if __name__ == "__main__":
 
     run_indextts2_workflow(
         text=test_text,
-        ollama_model="qwen2.5:14b",
         voice="Heisenberg",
         output_dir="output/test_indextts2",
         chapter_title="Test Chapter",

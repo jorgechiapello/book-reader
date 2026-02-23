@@ -7,12 +7,11 @@ class IndexTTS2Backend(TTSBackend):
     """Strategy for the IndexTTS-2 Docker-server pipeline."""
 
     def segments(self, ctx: ChapterContext) -> None:
-        """Phase 1: Run CrewAI agents to produce *_segments.json."""
+        """Phase 1: Split text into segments and save *_segments.json."""
         from workflows.indextts2.workflow import generate_segments
 
         generate_segments(
             text=ctx.text,
-            ollama_model=ctx.ollama_model,
             output_dir=ctx.output_dir,
             chapter_title=ctx.chapter_title,
             chapter_filename=ctx.chapter_filename,

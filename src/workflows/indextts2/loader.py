@@ -32,13 +32,11 @@ def load_segments(path: Path) -> SegmentsDocument:
         text = s.get("text", "")
         emo_vec = s.get("emo_vector")
         interval = s.get("interval_silence")
-        role = s.get("role", "Narrator")
         segments.append(
             Segment(
                 text=text,
                 emo_vector=emo_vec,
                 interval_silence=interval,
-                role=role,
             )
         )
 

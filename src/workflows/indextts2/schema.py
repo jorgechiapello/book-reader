@@ -23,7 +23,6 @@ class Segment:
     text: str
     emo_vector: list[float] | None = None
     interval_silence: int | None = None
-    role: str = "Narrator"
 
 
 @dataclass

@@ -45,7 +45,7 @@ def generate_audio_with_indextts2(
         response = requests.post(
             url,
             json=payload,
-            timeout=300,  # 5 min: IndexTTS-2 on CPU can be slow
+            timeout=3600,  # 1 hour: IndexTTS-2 on CPU can be very slow
         )
         response.raise_for_status()
 
