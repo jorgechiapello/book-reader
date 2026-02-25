@@ -8,7 +8,14 @@ from pydub import AudioSegment
 from text_utils import split_text_smartly
 from .integration import generate_audio_with_indextts2
 from .loader import load_segments
-from .schema import Segment, SegmentsDocument, merge_segment_params
+from .schema import Segment, SegmentsDocument
+
+# --- Module-level defaults ---
+DEFAULT_EMO_ALPHA = 0.45
+DEFAULT_CHUNK_SIZE = 500
+DEFAULT_TTS_URL = "http://localhost:8001"
+DEFAULT_VOICE = "Heisenberg"
+DEFAULT_USE_EMO_TEXT = True
 
 
 def generate_segments(
@@ -16,18 +23,18 @@ def generate_segments(
     output_dir: os.PathLike,
     chapter_title: str,
     chapter_filename: str,
-    emo_alpha: float = 0.5,
-    interval_silence: int = 200,
-    chunk_size: int = 500,
+    emo_alpha: float = DEFAULT_EMO_ALPHA,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
 ) -> str:
     """
-    Phase 1: Split text into segments and save *_segments.json.
+    Split text into segments and save to a JSON artifact.
 
-    Emotion is handled by IndexTTS-2's built-in use_emo_text inference —
-    no LLM calls required. Each segment is a plain prose chunk produced by
-    the rule-based split_text_smartly splitter.
+    Creates a segments document containing text chunks produced by rule-based
+    splitting. The output includes configuration for IndexTTS-2 emotional
+    inference (use_emo_text).
 
-    Returns the path to the segments file.
+    Returns:
+        str: The path to the generated segments file.
     """
     output_dir = os.path.normpath(output_dir)
     print(f"  Splitting text into segments for: {chapter_title}")
@@ -39,9 +46,8 @@ def generate_segments(
     segments_path = os.path.join(output_dir, f"{artifact_base}_segments.json")
 
     document = {
-        "use_emo_text": True,
+        "use_emo_text": DEFAULT_USE_EMO_TEXT,
         "emo_alpha": emo_alpha,
-        "interval_silence": interval_silence,
         "segments": [{"text": seg.text} for seg in segments],
     }
 
@@ -57,11 +63,13 @@ def synthesize_from_segments(
     output_dir: os.PathLike,
     chapter_title: str,
     chapter_filename: str,
-    tts_url: str = "http://localhost:8001",
+    tts_url: str = DEFAULT_TTS_URL,
 ) -> None:
     """
-    Phase 2: Load segments from JSON and synthesize audio via IndexTTS-2 server.
-    Requires existing *_segments.json file.
+    Load segments from a JSON file and synthesize audio via IndexTTS-2.
+
+    Processes each segment in the provided document and merges the resulting
+    audio files into a single output WAV.
     """
     output_dir = Path(output_dir)
     artifact_base = chapter_filename.replace(".txt", "")
@@ -73,36 +81,23 @@ def synthesize_from_segments(
         )
 
     doc = load_segments(segments_path)
-    voice_name = Path(voice).stem if voice else "Heisenberg"
-    doc = SegmentsDocument(
-        segments=doc.segments,
-        use_emo_text=doc.use_emo_text,
-        emo_alpha=doc.emo_alpha,
-        interval_silence=doc.interval_silence,
-    )
+    voice_name = Path(voice).stem if voice else DEFAULT_VOICE
     temp_files: List[Path] = []
     print(f"  Generating audio for {chapter_title} ({len(doc.segments)} segments)...")
 
     for idx, segment in enumerate(doc.segments):
         temp_path = output_dir / f"temp_{idx}.wav"
-        params = merge_segment_params(doc, segment)
 
-        preview = (
-            f"emo_vector={params['emo_vector'][:4]}..."
-            if params["emo_vector"]
-            else "use_emo_text"
-        )
-        print(f"  [{idx + 1}/{len(doc.segments)}] {preview}")
-
+        print(f"  [{idx + 1}/{len(doc.segments)}] use_emo_text")
+        print(f"  Text: {segment.text}")
         success = generate_audio_with_indextts2(
-            text=params["text"],
+            text=segment.text,
             output_path=temp_path,
             voice=voice_name,
             filename=temp_path.name,
-            use_emo_text=params["use_emo_text"],
-            emo_alpha=params["emo_alpha"],
-            interval_silence=params["interval_silence"],
-            emo_vector=params["emo_vector"],
+            use_emo_text=DEFAULT_USE_EMO_TEXT,
+            emo_alpha=doc.emo_alpha,
+            interval_silence=doc.interval_silence,
             tts_url=tts_url,
         )
 
@@ -149,9 +144,8 @@ def run_indextts2_workflow(
     output_dir: os.PathLike,
     chapter_title: str,
     chapter_filename: str,
-    emo_alpha: float = 1,
-    interval_silence: int = 200,
-    tts_url: str = "http://localhost:8001",
+    emo_alpha: float = DEFAULT_EMO_ALPHA,
+    tts_url: str = DEFAULT_TTS_URL,
 ) -> None:
     """
     Full IndexTTS-2 workflow: generate segments, then synthesize audio.
@@ -162,7 +156,6 @@ def run_indextts2_workflow(
         chapter_title=chapter_title,
         chapter_filename=chapter_filename,
         emo_alpha=emo_alpha,
-        interval_silence=interval_silence,
     )
     synthesize_from_segments(
         voice=voice,
