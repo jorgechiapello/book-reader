@@ -5,6 +5,7 @@ services:
     build:
       context: ./tts_service
       dockerfile: Dockerfile
+    platform: linux/amd64
     ports:
       - "8001:8001"
     volumes:

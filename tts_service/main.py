@@ -1,8 +1,20 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import Response
-from pydantic import BaseModel
+import logging
 import os
 import sys
+import time
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import Response
+from pydantic import BaseModel
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    stream=sys.stdout,
+    force=True,
+)
+logger = logging.getLogger("tts_service")
 
 
 class GenerateRequest(BaseModel):
@@ -17,7 +29,24 @@ class GenerateRequest(BaseModel):
 # Add IndexTTS to path
 sys.path.insert(0, '/app/index-tts')
 
-app = FastAPI()
+app = FastAPI(title="IndexTTS-2 Service", version="1.0")
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log every request and its response status + duration."""
+    start = time.perf_counter()
+    body_bytes = await request.body()
+    # Re-inject body so downstream handlers can read it
+    async def receive():
+        return {"type": "http.request", "body": body_bytes}
+    request._receive = receive
+
+    logger.info("→ %s %s", request.method, request.url.path)
+    response = await call_next(request)
+    elapsed = (time.perf_counter() - start) * 1000
+    logger.info("← %s %s  %d  %.0fms", request.method, request.url.path, response.status_code, elapsed)
+    return response
 
 # Global variables
 tts_model = None
@@ -29,7 +58,7 @@ def load_model():
     global tts_model
     
     try:
-        print("Loading IndexTTS-2 model...")
+        logger.info("Loading IndexTTS-2 model...")
         
         # Import IndexTTS2
         from indextts.infer_v2 import IndexTTS2
@@ -43,12 +72,10 @@ def load_model():
             use_deepspeed=False
         )
             
-        print("✓ IndexTTS-2 model loaded successfully!")
+        logger.info("IndexTTS-2 model loaded successfully")
         
     except Exception as e:
-        print(f"Error loading model: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception("Error loading model: %s", e)
         tts_model = None
 
 
@@ -102,6 +129,9 @@ async def generate_audio(req: GenerateRequest):
     emo_alpha = req.emo_alpha
     interval_silence = req.interval_silence
     emo_vector = req.emo_vector
+
+    logger.info("Request received: %r (voice=%s, use_emo_text=%s)", text[:60], voice or DEFAULT_VOICE, use_emo_text)
+
     if tts_model is None:
         raise HTTPException(
             status_code=503,
@@ -124,7 +154,7 @@ async def generate_audio(req: GenerateRequest):
     
     try:
         emo_vec_str = f" emo_vector={emo_vector}" if emo_vector else ""
-        print(f"Generating audio for: {text[:50]}... (voice: {voice_path}, use_emo_text={use_emo_text}){emo_vec_str}")
+        logger.info("Generating audio for: %s... (voice: %s, use_emo_text=%s)%s", text[:50], voice_path, use_emo_text, emo_vec_str)
         
         # Generate temporary output file
         temp_output = f"/tmp/{filename}"
@@ -157,7 +187,7 @@ async def generate_audio(req: GenerateRequest):
         except:
             pass
         
-        print(f"✓ Generated {len(audio_bytes)} bytes of audio")
+        logger.info("Generated %d bytes of audio", len(audio_bytes))
         
         # Return audio as WAV file
         return Response(
@@ -169,9 +199,7 @@ async def generate_audio(req: GenerateRequest):
         )
             
     except Exception as e:
-        print(f"Error generating audio: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception("Error generating audio: %s", e)
         raise HTTPException(
             status_code=500,
             detail=f"Audio generation failed: {str(e)}"
