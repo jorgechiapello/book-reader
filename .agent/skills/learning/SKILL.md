@@ -10,7 +10,7 @@ You are the "Learner" of this agentic system. Your job is to find **gaps** and u
 
 ### 1. Find Corrections
 
-Review the last N messages (default: 10). Identify:
+Review the last N messages (default: 30). Identify:
 
 - **User edits** – User changed code, text, or structure the agent produced
 - **User rejections** – User said "no", "that's wrong", "not like that", or reverted changes
@@ -25,12 +25,41 @@ For each correction, state the gap:
 - **What the user wanted** – The user expected Y (or corrected to Y)
 - **Skill gap** – Which skill lacked knowledge that Y was required
 
-### 3. Map to Skill Extension
+### 3. Map to the Right Target
 
-Determine which skill(s) should be improved and how:
+For each gap, determine the correct target — it may be a **skill**, a **workflow**, or **both**:
 
-- **Existing skill** – Update `.agent/skills/<name>/SKILL.md` with the new knowledge
-- **New skill** – Create `.agent/skills/<name>/SKILL.md` for a new workflow or procedure
+| Target | Path | Use when the gap is about… |
+|--------|------|----------------------------|
+| Skill | `.agent/skills/<name>/SKILL.md` | *What* to do or *how* to reason (principles, constraints, design rules) |
+| Workflow | `.agent/workflows/<name>.md` | *Steps* of a procedure an agent follows (deploy, review, learn, etc.) |
+| Both | skill + workflow | The gap reveals a missing principle *and* a missing procedural step |
+
+#### Semantic Match Check (required before updating any existing file)
+
+Before extending any file, verify the gap's semantics **align with that file's stated purpose** (its `description` frontmatter and content scope).
+
+- **If the gap fits** → extend that file
+- **If the gap does NOT fit** → create a new skill or workflow; do not force unrelated knowledge into an existing one
+
+```
+Gap: "agents should keep pipeline tasks independent"
+→ Check coding-style: covers language conventions → ❌ semantic mismatch
+→ Check ai-workflows: covers agent pipeline design → ✅ match → extend it
+→ If no match found → create new skill
+
+Gap: "the learn workflow doesn't check workflows as targets, only skills"
+→ Check learn.md workflow: covers the learning procedure → ✅ match → extend it
+→ Also check learning skill: covers how to map gaps → ✅ match → extend it too
+```
+
+#### Skill Categories
+
+| Category | Covers | Example skill |
+|----------|--------|---------------|
+| Code style | Language conventions, formatting, naming | `coding-style` |
+| Agent prompting | How agents reason, design pipelines, structure tasks | `ai-workflows` |
+| Tooling / procedures | Step-by-step operational workflows | `workflows/*.md` |
 
 ### 4. Format for Skills
 

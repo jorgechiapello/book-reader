@@ -32,6 +32,11 @@ Assess code quality across patterns, robustness, organization, tests, and risks.
    - Look for potential security vulnerabilities (injection, exposure of secrets, unsafe parsing)
    - Identify performance issues (N+1 queries, unnecessary allocations, blocking calls)
 
+6. **Dead Code**
+   - Flag no-op reassignments (e.g., re-wrapping a value in the same type it already is)
+   - Identify unused variables, imports, and unreachable branches
+   - Remove leftover refactor artifacts (commented-out code, orphaned helpers)
+
 ## Output
 
 Report findings with concrete file/line references. Flag severity: Critical, Important, or Suggestion. Include actionable recommendations.
