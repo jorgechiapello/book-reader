@@ -58,6 +58,11 @@ def load_model():
     global tts_model
     
     try:
+        import torch
+        threads = max(1, os.cpu_count() or 1)
+        torch.set_num_threads(threads)
+        logger.info("Set PyTorch CPU threads to: %d", threads)
+        
         logger.info("Loading IndexTTS-2 model...")
         
         # Import IndexTTS2
@@ -112,7 +117,7 @@ def read_root():
 
 
 @app.post("/generate")
-async def generate_audio(req: GenerateRequest):
+def generate_audio(req: GenerateRequest):
     """
     Generate audio using IndexTTS-2.
 
@@ -156,8 +161,8 @@ async def generate_audio(req: GenerateRequest):
         emo_vec_str = f" emo_vector={emo_vector}" if emo_vector else ""
         logger.info("Generating audio for: %s... (voice: %s, use_emo_text=%s)%s", text[:50], voice_path, use_emo_text, emo_vec_str)
         
-        # Generate temporary output file
-        temp_output = f"/tmp/{filename}"
+        # Generate temporary output file in RAM disk
+        temp_output = f"/dev/shm/{filename}"
         
         tts_model.infer(
             spk_audio_prompt=voice_path,

@@ -11,7 +11,7 @@ from .loader import load_segments
 from .schema import Segment, SegmentsDocument
 
 # --- Module-level defaults ---
-DEFAULT_EMO_ALPHA = 0.45
+DEFAULT_EMO_ALPHA = 0.3
 DEFAULT_CHUNK_SIZE = 500
 DEFAULT_TTS_URL = "http://localhost:8001"
 DEFAULT_VOICE = "Heisenberg"
@@ -87,14 +87,18 @@ def synthesize_from_segments(
 
     for idx, segment in enumerate(doc.segments):
         temp_path = output_dir / f"temp_{idx}.wav"
-
-        print(f"  [{idx + 1}/{len(doc.segments)}] use_emo_text")
+        
+        if temp_path.exists():
+            print(f"  [{idx + 1}/{len(doc.segments)}] Skipping already generated segment")
+            temp_files.append(temp_path)
+            continue
+            
+        print(f"  [{idx + 1}/{len(doc.segments)}] generating")
         print(f"  Text: {segment.text}")
         success = generate_audio_with_indextts2(
             text=segment.text,
             output_path=temp_path,
             voice=voice_name,
-            filename=temp_path.name,
             use_emo_text=DEFAULT_USE_EMO_TEXT,
             emo_alpha=doc.emo_alpha,
             interval_silence=doc.interval_silence,
@@ -113,25 +117,25 @@ def synthesize_from_segments(
         combined = AudioSegment.empty()
         for idx, p in enumerate(temp_files):
             try:
+                # We need the original index to fetch the exact silence ms for this file
+                # If everything succeeds, enumerate matches exactly idx. If items were skipped due to failure,
+                # len(temp_files) < len(doc.segments).
+                try:
+                    orig_idx = int(p.stem.split("_")[-1])
+                    segment_metadata = doc.segments[orig_idx]
+                    silence_ms = segment_metadata.interval_silence if getattr(segment_metadata, 'interval_silence', None) is not None else doc.interval_silence
+                except (ValueError, IndexError):
+                    silence_ms = doc.interval_silence
+
                 seg_audio = AudioSegment.from_wav(str(p))
                 combined += seg_audio
-                silence_ms = (
-                    doc.segments[idx].interval_silence
-                    if doc.segments[idx].interval_silence is not None
-                    else doc.interval_silence
-                )
+                
                 if idx < len(temp_files) - 1:
                     combined += AudioSegment.silent(duration=silence_ms)
             except Exception as e:
-                print(f"  ⚠ Error loading {p}: {e}")
+                print(f"  ⚠ Error decoding segment from {p}: {e}")
 
         combined.export(str(final_audio_path), format="wav")
-
-        for p in temp_files:
-            try:
-                os.remove(p)
-            except Exception:
-                pass
 
         print(f"  ✓ IndexTTS-2 Audio generated for {chapter_title}: {final_audio_path}")
     else:

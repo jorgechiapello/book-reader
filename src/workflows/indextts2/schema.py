@@ -4,6 +4,7 @@ from dataclasses import dataclass
 class Segment:
     """Single segment for synthesis."""
     text: str
+    interval_silence: int | None = None
 
 
 @dataclass

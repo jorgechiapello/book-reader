@@ -6,7 +6,6 @@ def generate_audio_with_indextts2(
     text: str,
     output_path: Path,
     voice: str | None = None,
-    filename: str | None = None,
     use_emo_text: bool = False,
     emo_alpha: float = 1,
     interval_silence: int = 200,
@@ -20,7 +19,6 @@ def generate_audio_with_indextts2(
         text: The text to convert to speech.
         output_path: Local path where the audio file should be saved.
         voice: Voice name (e.g. "Heisenberg"). Must match a .wav in the server's voices directory.
-        filename: Output filename for the response. Defaults to output_path.name.
         use_emo_text: Use text-based emotion inference when emo_vector is null.
         emo_alpha: Emotion blend weight (default 1).
         interval_silence: Milliseconds of silence between segments.
@@ -33,7 +31,7 @@ def generate_audio_with_indextts2(
     url = f"{tts_url.rstrip('/')}/generate"
     payload = {
         "text": text,
-        "filename": filename or output_path.name,
+        "filename": output_path.name,
         "voice": voice.strip() if voice and voice.strip() else None,
         "use_emo_text": use_emo_text,
         "emo_alpha": emo_alpha,
@@ -48,12 +46,11 @@ def generate_audio_with_indextts2(
             timeout=3600,  # 1 hour: IndexTTS-2 on CPU can be very slow
         )
         response.raise_for_status()
-
+        
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "wb") as f:
             f.write(response.content)
-
-        print(f"  ✓ Generated audio: {output_path.name}")
+            
         return True
 
     except requests.exceptions.Timeout:
