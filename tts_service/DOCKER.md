@@ -6,15 +6,13 @@ Common Docker commands for the IndexTTS-2 TTS service. See [README.md](README.md
 
 ### Build
 ```bash
-# Build image (use cache)
-# Use --platform linux/amd64 to target AMD64 (required; ARM64 fails due to pynini)
-docker build --platform linux/amd64 -t indextts-service .
+docker build -t indextts-service .
 
 # Build with docker-compose
 docker-compose -f ../docker-compose.yml build
 
 # Rebuild from scratch (no cache)
-docker build --platform linux/amd64 --no-cache -t indextts-service .
+docker build --no-cache -t indextts-service .
 ```
 
 ### Run
@@ -115,5 +113,5 @@ docker builder prune -a -f
 
 ### Rebuild after cache clear
 ```bash
-docker build --platform linux/amd64 --no-cache -t indextts-service .
+docker build --no-cache -t indextts-service .
 ```
