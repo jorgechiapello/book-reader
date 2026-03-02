@@ -26,8 +26,13 @@ class GenerateRequest(BaseModel):
     interval_silence: int = 200
     emo_vector: list[float] | None = None
 
-# Add IndexTTS to path
-sys.path.insert(0, '/app/index-tts')
+# Add IndexTTS to path dynamically
+TTS_SERVICE_DIR = os.path.dirname(os.path.abspath(__file__))
+INDEX_TTS_DIR = os.path.join(TTS_SERVICE_DIR, "index-tts")
+if os.path.exists(INDEX_TTS_DIR):
+    sys.path.insert(0, INDEX_TTS_DIR)
+elif os.path.exists('/app/index-tts'):
+    sys.path.insert(0, '/app/index-tts')
 
 app = FastAPI(title="IndexTTS-2 Service", version="1.0")
 
@@ -50,7 +55,16 @@ async def log_requests(request: Request, call_next):
 
 # Global variables
 tts_model = None
-VOICES_DIR = "/app/voices"
+# Look for voices in the local directory or fallback to Docker /app/voices
+VOICES_DIR = os.path.join(TTS_SERVICE_DIR, "voices")
+if not os.path.exists(VOICES_DIR) and os.path.exists("/app/voices"):
+    VOICES_DIR = "/app/voices"
+
+# Model weights are in ~/tts-weights by default natively, or /app/index-tts/checkpoints in Docker
+WEIGHTS_DIR = os.path.expanduser("~/tts-weights")
+if not os.path.exists(WEIGHTS_DIR) and os.path.exists("/app/index-tts/checkpoints"):
+    WEIGHTS_DIR = "/app/index-tts/checkpoints"
+
 DEFAULT_VOICE = "Heisenberg"
 
 def load_model():
@@ -65,13 +79,18 @@ def load_model():
         
         logger.info("Loading IndexTTS-2 model...")
         
+        # Determine best device (MPS OOMs on 18GB memory, use native ARM CPU instead)
+        device = "cpu"
+        logger.info("Using device: %s", device)
+
         # Import IndexTTS2
         from indextts.infer_v2 import IndexTTS2
         
         # Initialize the model
         tts_model = IndexTTS2(
-            cfg_path="/app/index-tts/checkpoints/config.yaml",
-            model_dir="/app/index-tts/checkpoints",
+            cfg_path=os.path.join(WEIGHTS_DIR, "config.yaml"),
+            model_dir=WEIGHTS_DIR,
+            device=device,
             use_fp16=True,  # Use FP16 for faster inference
             use_cuda_kernel=False,
             use_deepspeed=False
@@ -161,8 +180,8 @@ def generate_audio(req: GenerateRequest):
         emo_vec_str = f" emo_vector={emo_vector}" if emo_vector else ""
         logger.info("Generating audio for: %s... (voice: %s, use_emo_text=%s)%s", text[:50], voice_path, use_emo_text, emo_vec_str)
         
-        # Generate temporary output file in RAM disk
-        temp_output = f"/dev/shm/{filename}"
+        # Generate temporary output file in RAM disk if available, else local temp
+        temp_output = f"/dev/shm/{filename}" if os.path.exists("/dev/shm") else f"/tmp/{filename}"
         
         tts_model.infer(
             spk_audio_prompt=voice_path,

@@ -22,3 +22,8 @@ pip-wheel-metadata/
 *.egg-info/
 checkpoints/*
 265c6cef07625665d0c28d2faafb1415562379dc/semantic_codec/model.safetensors
+tts_service/.venv-native/
+tts_service/build_deps/
+tts_service/index-tts/
+tts_service/checkpoints/
+
