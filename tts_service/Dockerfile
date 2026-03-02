@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir cython
+RUN pip install --no-cache-dir cython==3.0.11
 
 # Build OpenFst 1.8.4 with --enable-grm (pynini requires the grm extensions).
 RUN wget -q https://www.openfst.org/twiki/pub/FST/FstDownload/openfst-1.8.4.tar.gz && \
@@ -27,7 +27,7 @@ RUN wget -q https://www.openfst.org/twiki/pub/FST/FstDownload/openfst-1.8.4.tar.
 
 # Patch pynini: OpenFst 1.8.4 renamed fst::StringJoin → fst::StrJoin but pynini's
 # distributed stringmap.h still calls the old name. Build a native ARM64 wheel.
-RUN pip download --no-deps --no-binary :all: pynini --dest /tmp/pynini_dl && \
+RUN pip download --no-deps --no-binary :all: pynini==2.1.6 --dest /tmp/pynini_dl && \
     cd /tmp/pynini_dl && \
     tar -xzf pynini-*.tar.gz && \
     cd pynini-* && \
@@ -38,7 +38,7 @@ RUN pip download --no-deps --no-binary :all: pynini --dest /tmp/pynini_dl && \
 # Build WeTextProcessing from GitHub (PyPI version 0.1.10 lacks tn.english).
 # PR #325 modernized their repo to pyproject.toml, so standard pip wheel works.
 # --no-deps prevents it from trying to rebuild pynini from source again.
-RUN pip wheel --no-deps --no-cache-dir --find-links /wheels/ git+https://github.com/wenet-e2e/WeTextProcessing.git -w /wheels/
+RUN pip wheel --no-deps --no-cache-dir --find-links /wheels/ git+https://github.com/wenet-e2e/WeTextProcessing.git@bb145729c903fac2d9fddf6b9077f352f3fc2816 -w /wheels/
 
 # ── Stage 2: Lean runtime image ───────────────────────────────────────────────
 FROM python:3.10-slim-bookworm
@@ -75,11 +75,11 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # --no-deps bypasses WeTextProcessing's strict requirement for pynini < 2.1.7
 RUN pip install --no-deps --no-cache-dir /wheels/*.whl
 
-# Download IndexTTS source
-RUN wget -q https://github.com/index-tts/index-tts/archive/refs/heads/main.tar.gz && \
-    tar -xzf main.tar.gz && \
-    mv index-tts-main index-tts && \
-    rm main.tar.gz
+# Download IndexTTS source at specific commit
+RUN wget -q https://github.com/index-tts/index-tts/archive/1698b32033f38a034572891aed698609da2ff392.tar.gz -O indextts.tar.gz && \
+    tar -xzf indextts.tar.gz && \
+    mv index-tts-1698b32033f38a034572891aed698609da2ff392 index-tts && \
+    rm indextts.tar.gz
 
 # Fix CUDA-only deps (opencv, torch versions for CPU)
 # hadolint ignore=SC2039,DL3025,DL4006
