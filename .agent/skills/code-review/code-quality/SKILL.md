@@ -37,6 +37,10 @@ Assess code quality across patterns, robustness, organization, tests, and risks.
    - Identify unused variables, imports, and unreachable branches
    - Remove leftover refactor artifacts (commented-out code, orphaned helpers)
 
+7. **DevOps & Reproducibility**
+   - Check infrastructure-as-code files like Dockerfiles, `requirements.txt`, or `package.json` for unpinned dependencies.
+   - Flag uses of "latest" tags, floating versions, or unpinned Git commits (e.g., in `pip`, `npm`, `apt-get` where applicable). Pinning dependencies guarantees reproducible and secure builds.
+
 ## Output
 
 Report findings with concrete file/line references. Flag severity: Critical, Important, or Suggestion. Include actionable recommendations.
