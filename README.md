@@ -4,209 +4,88 @@ Local audiobook generator that parses TXT/EPUB/PDF into chapters and generates p
 
 ## Setup
 
-1. Create a virtual environment and install dependencies:
-   - `python3.11 -m venv .venv`
-   - `source .venv/bin/activate`
-   - `pip install -r requirements.txt`
-2. Install PyTorch (required by TTS engines):
-   - Follow the official instructions at https://pytorch.org/get-started/locally/
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
 
 ## TTS Backends
 
-This project supports three TTS backends:
-
 | Backend | Strengths | Use Case |
 |---------|-----------|----------|
-| **StyleTTS2** (default) | Superior expressiveness, style/emotion control | Local high-quality narration |
-| **IndexTTS-2** | Natural language "soft instructions", duration control | Most expressive, cinematic narration |
-| **Qwen-TTS** | Dialogue specialized, long scripts | Books with heavy dialogue |
+| **StyleTTS2** | Expressiveness, style/emotion control | Default, local high-quality narration |
+| **IndexTTS-2** | Natural language emotion instructions | Most expressive, cinematic narration |
 
-## Usage
+## Script Writers (Text Analysis)
 
-### StyleTTS2 (Local & Expressive)
+Before generating audio, the pipeline writes a "script" (splitting text into chapters and segments, adding pacing/emotion notes).
 
-    # End-to-end generation (uses CrewAI sentiment analysis by default)
-    python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice joe --tts-backend styletts2 run
+| Writer | Description | Speed | Requirements |
+|---|---|---|---|
+| **`emotional_analyst`** (default) | Uses CrewAI to read the text and produce a rich, annotated script with inline pauses and voice director notes. | Slow | Ollama running locally (`localhost:11434`) |
+| **`rule_based`** | Splits text by punctuation and uses sentence length to guess pacing. No LLM used. | Instant | None |
 
-    # Or step by step
-    python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output ingest
-    python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice joe --tts-backend styletts2 speak
+### Setting up `emotional_analyst` (Requires Ollama)
 
-### IndexTTS-2 (Docker Server Integration)
+If you want the highest quality pacing and emotion, you need to run Ollama locally to power the `emotional_analyst` writer.
 
-IndexTTS-2 uses "soft instructions" (natural language descriptions) to control emotion. This implementation runs as a Docker service with the voice reference and neural network pre-loaded.
-
-**Prerequisites:**
-1. Download the IndexTTS-2 model (CosyVoice):
+1. **Install Ollama:** Download from [ollama.com](https://ollama.com/) or run `brew install ollama`.
+2. **Start the Server:** Open a new terminal and run `ollama serve` (or launch the Ollama app on macOS).
+3. **Pull the Model:** Before running the pipeline, you MUST pull the language model used by the script writer (by default `qwen2.5:14b`):
    ```bash
-   # Create model directory
-   mkdir -p pretrained_models
-   
-   # Download CosyVoice-300M-SFT model
-   # Visit: https://www.modelscope.cn/models/iic/CosyVoice-300M-SFT
-   # Or use modelscope CLI to download automatically
+   ollama pull qwen2.5:14b
    ```
 
-2. Build and start the Docker server:
-   ```bash
-   # Rebuild to install new dependencies
-   docker-compose build
-   
-   # Start the server
-   docker-compose up
-   ```
-   This starts the IndexTTS-2 server at `http://localhost:8001` with the voice and model pre-loaded.
-
-**Run Workflow:**
-
-Full pipeline (ingest → segments → synthesize):
+*To specify a writer, use the `--writer` flag:*
 ```bash
-python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice Heisenberg --tts-backend indextts2 --ollama-model qwen2.5:14b run
+python src/main.py --output output run books/the-1000000-bank-note.pdf --writer rule_based
 ```
 
-Or step by step (split pipeline):
-```bash
-# 1. Ingest the book into chapters
-python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output ingest
+## Running
 
-# 2. Generate emotional segments (CrewAI + Ollama; no TTS server needed)
-python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --tts-backend indextts2 --ollama-model qwen2.5:14b segments
-
-# 3. Synthesize audio from segments (requires Docker TTS server running)
-python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice Heisenberg --tts-backend indextts2 synthesize
-```
-
-**Why split?** You can review/edit `*_segments.json` before synthesis, retry TTS without re-running CrewAI, or use different voices without re-analyzing.
-
-**Test the workflow:**
-```bash
-python -m src.workflows.indextts2.workflow
-```
-
-**How it works:**
-1. CrewAI agents analyze text for emotional content and generate SSML
-2. Each text segment is sent to the Docker server at `http://localhost:8001/generate`
-3. The server synthesizes audio using the pre-loaded IndexTTS-2 model and voice
-4. Audio bytes are returned and saved locally
-5. All segments are merged into the final audio file
-
-### With LLM Sentiment Analysis (most expressive)
-
-Enable automatic emotion detection using a local LLM. The LLM analyzes the text, segments it by emotion, and applies different TTS parameters for each segment.
-
-**Prerequisites - Install Ollama:**
-
-    brew install ollama
-
-**Start Ollama (before generating audio):**
-
-    brew services start ollama
-
-**Download a model (one-time):**
-
-    ollama pull llama3.2:3b
-
-**Stop Ollama (when done, to free resources):**
-
-    brew services stop ollama
-
-**Two sentiment backends available:**
-
-1. **Direct Ollama (default)** - Fast, single-pass emotion analysis
-2. **CrewAI Multi-Agent** - Sophisticated 3-agent workflow with iterative refinement
-
-**Run with sentiment analysis (direct Ollama):**
+### 1. Start the IndexTTS-2 Server (new terminal)
 
 ```bash
-python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice joe --tts-backend styletts2 run
+cd tts_service
+bash setup_native.sh        # one-time setup
+source .venv-native/bin/activate
+python main.py
 ```
 
-**Run with CrewAI multi-agent workflow (enabled by default):**
+### 2. Generate Audio
+
+Full pipeline (ingest → script → audio):
+```bash
+python src/main.py --output output run books/the-1000000-bank-note.pdf --voice Heisenberg --voice-backend indextts2
+```
+
+Step by step:
+```bash
+# Stage 1: Ingest book into a script
+python src/main.py --output output script books/the-1000000-bank-note.pdf --writer rule_based
+
+# Stage 2: Generate audio (server must be running)
+python src/main.py --output output audio output/001_chapter-1_script.json --voice Heisenberg --voice-backend indextts2
+```
+
+### StyleTTS2 (no server needed)
 
 ```bash
-python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice Heisenberg --tts-backend styletts2 run
+python src/main.py --output output run books/the-1000000-bank-note.pdf --voice joe --voice-backend styletts2
 ```
-
-**With a specific Ollama model:**
-
-```bash
-python src/main.py --input books/the-1000000-bank-note.pdf --output-dir output --voice joe \
-    --tts-backend styletts2 \
-    --ollama-model llama3.2:3b \
-    run
-```
-
-### CrewAI Multi-Agent Workflow
-
-The CrewAI backend uses three specialized agents working sequentially:
-
-1. **Emotional Analyst** - Analyzes text for subtext, mood, and narrative pacing
-2. **Voice Director** - Converts text + mood map into SSML with prosody, breaks, and emphasis
-3. **SSML Critic** - Validates markup and ensures natural, non-robotic pacing
-
-This produces both raw SSML and emotion-tagged segments compatible with StyleTTS2.
-
-**Test the CrewAI workflow standalone:**
-
-```bash
-python src/sentiment_crewai.py
-```
-
-### Recommended Ollama Models
-
-| Model | Size | Speed | Quality | Best For |
-|-------|------|-------|---------|----------|
-| `llama3.2:3b` | ~2GB | Fast | Good | **Apple M1/M2/M3 (recommended)** |
-| `llama3.2:1b` | ~1GB | Fastest | OK | Low memory systems |
-| `llama3:8b-instruct-q4_0` | ~4.7GB | Medium | Best | Systems with 16GB+ RAM |
-| `phi3:mini` | ~2.2GB | Fast | Good | Alternative lightweight option |
-
-**For Apple Silicon (M1/M2/M3):** Use `llama3.2:3b` for the best balance of speed and quality.
-
-    ollama pull llama3.2:3b
-
-### StyleTTS2 Parameters
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| --voice | None | Name of the voice sample (e.g. `joe` or `Heisenberg`) |
-| --style-ref | (voice sample) | Path to style reference audio |
-| --style-alpha | 0.3 | 0=more target speaker, 1=more reference style |
-| --style-beta | 0.7 | Style strength |
-| --diffusion-steps | 5 | More steps = better quality, slower |
-| --sentiment | off | Enable LLM-powered emotion analysis |
-| --sentiment-backend | ollama | Backend: ollama (fast) or crewai (sophisticated) |
-| --ollama-model | llama3.2 | Ollama model for sentiment analysis |
-
-### Tips for Better Sentiment
-
-1. **Use --sentiment flag**: Automatically varies emotion per segment based on text content.
-
-2. **Record expressive samples**: Create different samples for different moods:
-   - voices/joe_calm/sample.wav - relaxed narration
-   - voices/joe_excited/sample.wav - energetic reading
-   - voices/joe_dramatic/sample.wav - intense moments
-
-3. **Use style references**: Point --style-ref to an audio that demonstrates the emotion you want.
-
-4. **Adjust alpha/beta**: Higher alpha blends more of the style reference's emotion.
 
 ## Output Structure
 
-    output/
-      book-slug/
-        manifest.json
-        chapters/
-          001_chapter-1.txt
-          001_chapter-1.wav
-          002_chapter-2.txt
-          002_chapter-2.wav
+```
+output/
+  book-slug/
+    chapters/
+      001_chapter-1.json   # emotional script
+      001_chapter-1.wav    # generated audio
+```
 
 ## Notes
 
-- Chapter splitting is heuristic, especially for PDFs. If headings are missing, chapters are split by size.
-- Audio output is WAV for reliable concatenation across chunks.
-- StyleTTS2 is the recommended local backend (~6GB VRAM).
-- IndexTTS-2 runs as a direct Python library from a sibling repository.
-- Qwen-TTS still requires ComfyUI running at `localhost:8188`.
-- Sentiment analysis requires Ollama running locally (`localhost:11434`).
+- Model weights (~5.9 GB) are stored in `~/tts-weights/` — run `python tts_service/download_weights.py` to download.
+- Sentiment/emotion analysis requires Ollama running at `localhost:11434`.

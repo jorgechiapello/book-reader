@@ -25,7 +25,7 @@ Place `.wav` files in the `voices/` directory. The default voice is `Heisenberg.
 cd tts_service
 bash setup_native.sh
 source .venv-native/bin/activate
-uvicorn main:app --host 0.0.0.0 --port 8001
+python3 main.py
 ```
 
 ## API

@@ -240,3 +240,24 @@ def health_check():
         "default_voice": DEFAULT_VOICE,
         "default_voice_available": default_voice_path is not None,
     }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    import tomllib
+    
+    config_path = os.path.join(TTS_SERVICE_DIR, "uvicorn.toml")
+    server_host = "0.0.0.0"
+    server_port = 8000
+    
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "rb") as f:
+                config = tomllib.load(f)
+                server_host = config.get("host", server_host)
+                server_port = config.get("port", server_port)
+        except Exception as e:
+            logger.error("Failed to parse uvicorn.toml: %s", e)
+
+    logger.info("Starting Uvicorn on %s:%s (from config)", server_host, server_port)
+    uvicorn.run("main:app", host=server_host, port=server_port)

@@ -10,7 +10,7 @@
 #
 # After setup:
 #   source .venv-native/bin/activate
-#   uvicorn main:app --host 0.0.0.0 --port 8001
+#   python main.py
 # ─────────────────────────────────────────────────────────────────────────────
 set -ex
 
@@ -136,7 +136,7 @@ echo ""
 echo "To start the server:"
 echo "  cd tts_service"
 echo "  source .venv-native/bin/activate"
-echo "  uvicorn main:app --host 0.0.0.0 --port 8001"
+echo "  python main.py"
 echo ""
 echo "Make sure you have model weights in ~/tts-weights/"
 echo "(run: python download_weights.py)"
