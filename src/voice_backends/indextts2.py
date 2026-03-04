@@ -27,15 +27,14 @@ class IndexTTS2Synth(VoiceBackend):
         # Step 1: Translate script segments to IndexTTS-2 payloads
         # Use a checkpoint file to avoid re-running the LLM on resume
         payloads_path = script_path.with_suffix(".payloads.json")
+        payloads = []
         if payloads_path.exists():
             print(f"  [IndexTTS2Synth] Loading cached payloads from {payloads_path}...")
             with open(payloads_path, "r") as f:
                 payloads = json.load(f)
-        else:
-            payloads = self._translate_to_payloads(script)
-            with open(payloads_path, "w") as f:
-                json.dump(payloads, f, indent=2)
-            print(f"  [IndexTTS2Synth] Saved {len(payloads)} payloads to {payloads_path}")
+        
+        if len(payloads) < len(script.segments):
+            payloads = self._translate_to_payloads(script, payloads, payloads_path)
         
         temp_files = []
         
@@ -84,7 +83,7 @@ class IndexTTS2Synth(VoiceBackend):
             raise RuntimeError("No audio segments were successfully generated.")
 
 
-    def _translate_to_payloads(self, script: ChapterScript) -> list[dict]:
+    def _translate_to_payloads(self, script: ChapterScript, existing_payloads: list[dict], payloads_path: Path) -> list[dict]:
         """Use an LLM to translate script annotations into IndexTTS-2 inputs."""
         print(f"  [IndexTTS2Synth] Translating {len(script.segments)} segments to IndexTTS2 inputs using LLM...")
         
@@ -95,16 +94,22 @@ class IndexTTS2Synth(VoiceBackend):
             goal="Translate human annotations into exact JSON payloads for the IndexTTS-2 server.",
             backstory="You are an expert audio engineer who translates emotional intent into numerical parameters.",
             llm=llm,
-            verbose=False,
+            verbose=True,
             allow_delegation=False
         )
         
-        payloads = []
+        payloads = list(existing_payloads)
         
         # Process in batches to avoid overwhelming LLM context
         batch_size = 5
-        for i in range(0, len(script.segments), batch_size):
+        total_batches = (len(script.segments) + batch_size - 1) // batch_size
+        start_idx = len(payloads)
+        
+        for i in range(start_idx, len(script.segments), batch_size):
             batch = script.segments[i:i+batch_size]
+            current_batch = (i // batch_size) + 1
+            
+            print(f"  [IndexTTS2Synth] Translating batch {current_batch}/{total_batches} (Segments {i+1}-{min(i+batch_size, len(script.segments))})...")
             
             # Prepare batch input
             batch_input = []
@@ -140,7 +145,7 @@ class IndexTTS2Synth(VoiceBackend):
                 expected_output="Valid JSON array of IndexTTS-2 payload objects."
             )
             
-            crew = Crew(agents=[agent], tasks=[task], verbose=False)
+            crew = Crew(agents=[agent], tasks=[task], verbose=True)
             result = crew.kickoff()
             
             try:
@@ -152,6 +157,8 @@ class IndexTTS2Synth(VoiceBackend):
                     
                 data = json.loads(json_str)
                 payloads.extend(data)
+                print(f"  [IndexTTS2Synth] ✓ Batch {current_batch} completed successfully.")
+
             except Exception as e:
                 print(f"  [IndexTTS2Synth] ⚠ Failed to parse LLM translation, falling back to neutral: {e}")
                 # Fallback neutral
@@ -164,6 +171,11 @@ class IndexTTS2Synth(VoiceBackend):
                         "emo_vector": [0, 0, 0, 0, 0, 0, 0, 0.5],
                         "interval_silence": 200
                     })
+                    
+            # Save progress after each batch
+            with open(payloads_path, "w") as f:
+                json.dump(payloads, f, indent=2)
+            print(f"  [IndexTTS2Synth] Saved {len(payloads)} payloads to {payloads_path}")
 
         return payloads
 
