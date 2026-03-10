@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 from script_schema import ChapterScript, ScriptSegment
-from text_utils import split_text_smartly
+from text_extractors import extract_segments
 from .base import ScriptWriter
 
 
@@ -16,8 +16,7 @@ class RuleBasedWriter(ScriptWriter):
         output_path = Path(output_path)
         print(f"  [RuleBasedWriter] Splitting text into segments...")
         
-        # We reuse the existing split logic which chunks nicely by punctuation
-        chunks = split_text_smartly(text, max_chunk_size=500)
+        chunks = extract_segments(text)
         
         segments = []
         for chunk in chunks:

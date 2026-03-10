@@ -4,7 +4,7 @@ from pathlib import Path
 
 from config import Config
 from pipeline import build_pipeline
-from formats import extract_chapters
+from text_extractors import extract_chapters
 from voice_backends.base import SynthesisContext
 
 def build_parser():
