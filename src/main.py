@@ -110,7 +110,7 @@ def main():
             print(f"Processing chapter {i}/{len(chapters)}: {chapter.title}")
             script_filename = f"{i:03d}_{chapter.title}_script.json"
             script_output_path = output_dir / script_filename
-            pipeline.run_stage_1(chapter.text, script_output_path)
+            pipeline.run_stage_1(chapter.segments, script_output_path)
             
         print(f"Success. Scripts saved to {output_dir}")
 
@@ -141,7 +141,7 @@ def main():
         for i, chapter in enumerate(chapters, 1):
             print(f"Processing chapter {i}/{len(chapters)}: {chapter.title}")
             chapter_filename = f"{i:03d}_{chapter.title}.txt" # Dummy extension
-            pipeline.run_pipeline(chapter.text, output_dir, chapter_filename, ctx)
+            pipeline.run_pipeline(chapter.segments, output_dir, chapter_filename, ctx)
             
         print("Success. Full pipeline completed.")
 

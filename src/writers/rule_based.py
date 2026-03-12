@@ -1,8 +1,7 @@
-import os
 from pathlib import Path
+from typing import List
 
 from script_schema import ChapterScript, ScriptSegment
-from text_extractors import extract_segments
 from .base import ScriptWriter
 
 
@@ -12,13 +11,13 @@ class RuleBasedWriter(ScriptWriter):
     and simple heuristics instead of an LLM.
     """
 
-    def write(self, text: str, output_path: Path) -> Path:
+    def write(self, segments: List[str], output_path: Path) -> Path:
         output_path = Path(output_path)
-        print(f"  [RuleBasedWriter] Splitting text into segments...")
+        print(f"  [RuleBasedWriter] Processing {len(segments)} segments...")
         
-        chunks = extract_segments(text)
+        chunks = segments
         
-        segments = []
+        script_segments = []
         for chunk in chunks:
             # Very basic heuristic for pacing: long chunks = fast, short = slow
             if len(chunk) > 300:
@@ -39,7 +38,7 @@ class RuleBasedWriter(ScriptWriter):
                 text=chunk,
                 interpretation=interpretation
             )
-            segments.append(segment)
+            script_segments.append(segment)
 
         summary = "Summary not extracted (Rule-Based Writer)"
 
@@ -49,9 +48,9 @@ class RuleBasedWriter(ScriptWriter):
             version=1,
             chapter_title=chapter_title,
             summary=summary,
-            segments=segments
+            segments=script_segments
         )
         
         script.save(output_path)
-        print(f"  [RuleBasedWriter] ✓ Saved {len(segments)} segments to {output_path}")
+        print(f"  [RuleBasedWriter] ✓ Saved {len(script_segments)} segments to {output_path}")
         return output_path

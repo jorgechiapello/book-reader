@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import List
 from crewai import Agent, Task, Crew, Process
 
 from agents.utils import local_llm
@@ -17,9 +18,11 @@ class EmotionalAnalystWriter(ScriptWriter):
     def __init__(self):
         self.llm = local_llm(model=Config.DEFAULT_OLLAMA_MODEL, base_url=Config.DEFAULT_OLLAMA_URL)
 
-    def write(self, text: str, output_path: Path) -> Path:
+    def write(self, segments: List[str], output_path: Path) -> Path:
         output_path = Path(output_path)
         print(f"  [EmotionalAnalystWriter] Initializing LLM Analysis via CrewAI...")
+
+        text = "\n".join(segments)
 
         # For long texts, we should do initial extraction of characters globally
         # But this can be a basic implementation doing chunk-by-chunk for segments
