@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 
 @dataclass
@@ -9,6 +10,7 @@ class SynthesisContext:
     voice_name: str | None = None
     voice_sample_path: Path | None = None
     tts_url: str | None = None
+
 
 
 class VoiceBackend(ABC):

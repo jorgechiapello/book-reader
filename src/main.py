@@ -3,9 +3,21 @@ import logging
 from pathlib import Path
 
 from config import Config
-from pipeline import build_pipeline
-from text_extractors import extract_chapters  # text_extractors package
-from voice_backends.base import SynthesisContext
+from pipeline import Pipeline
+from text_extractors import extract_chapters
+from writers import RuleBasedWriter, EmotionalAnalystWriter
+from voice_backends import IndexTTS2Synth, StyleTTS2Synth, QwenSynth, SynthesisContext
+
+WRITERS = {
+    "rule_based": RuleBasedWriter,
+    "emotional_analyst": EmotionalAnalystWriter
+}
+
+BACKENDS = {
+    "indextts2": IndexTTS2Synth,
+    "styletts2": StyleTTS2Synth,
+    "qwen": QwenSynth
+}
 
 def build_parser():
     parser = argparse.ArgumentParser(description="TTS Service CLI - 3-Stage Pipeline")
@@ -25,7 +37,7 @@ def build_parser():
     parser_script.add_argument(
         "--writer", 
         type=str, 
-        choices=["rule_based", "emotional_analyst"],
+        choices=list(WRITERS.keys()),
         default="rule_based",
         help="ScriptWriter strategy to use (default: rule_based)"
     )
@@ -43,7 +55,7 @@ def build_parser():
     parser_audio.add_argument(
         "--voice-backend", 
         type=str, 
-        choices=["indextts2", "styletts2", "qwen"],
+        choices=list(BACKENDS.keys()),
         default="indextts2",
         help="VoiceBackend strategy to use (default: indextts2)"
     )
@@ -63,22 +75,19 @@ def build_parser():
     parser_run.add_argument(
         "--writer", 
         type=str, 
-        choices=["rule_based", "emotional_analyst"],
+        choices=list(WRITERS.keys()),
         default="rule_based",
         help="ScriptWriter strategy to use"
     )
     parser_run.add_argument(
         "--voice-backend", 
         type=str, 
-        choices=["indextts2", "styletts2", "qwen"],
+        choices=list(BACKENDS.keys()),
         default="indextts2",
         help="VoiceBackend strategy to use"
     )
     parser_run.add_argument("--voice", type=str, help="Override default voice name")
     parser_run.add_argument("--voice-sample", type=str, help="Override default voice sample path")
-
-    return parser
-
 
 def build_context(args, command: str) -> SynthesisContext:
     ctx = SynthesisContext()
@@ -102,7 +111,6 @@ def build_context(args, command: str) -> SynthesisContext:
 
     return ctx
 
-
 def main():
     logging.basicConfig(level=logging.INFO, format='%(message)s')
     parser = build_parser()
@@ -116,7 +124,7 @@ def main():
         print(f"Ingesting book from: {input_path}")
         chapters = extract_chapters(input_path)
         
-        pipeline = build_pipeline(args.writer, "indextts2") # Backend doesn't matter for stage 1 only
+        pipeline = Pipeline(WRITERS[args.writer](), BACKENDS["indextts2"]()) # Backend doesn't matter for stage 1 only
         
         for i, chapter in enumerate(chapters, 1):
             print(f"Processing chapter {i}/{len(chapters)}: {chapter.title}")
@@ -134,7 +142,7 @@ def main():
             
         ctx = build_context(args, "audio")
         
-        pipeline = build_pipeline("rule_based", args.voice_backend) # Writer doesn't matter for stage 2 only
+        pipeline = Pipeline(WRITERS["rule_based"](), BACKENDS[args.voice_backend]()) # Writer doesn't matter for stage 2 only
         
         audio_filename = script_path.stem.replace("_script", "") + ".wav"
         audio_output_path = output_dir / audio_filename
@@ -148,7 +156,7 @@ def main():
         chapters = extract_chapters(input_path)
         
         ctx = build_context(args, "run")
-        pipeline = build_pipeline(args.writer, args.voice_backend)
+        pipeline = Pipeline(WRITERS[args.writer](), BACKENDS[args.voice_backend]())
         
         for i, chapter in enumerate(chapters, 1):
             print(f"Processing chapter {i}/{len(chapters)}: {chapter.title}")

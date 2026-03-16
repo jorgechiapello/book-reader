@@ -40,11 +40,3 @@ class Pipeline:
         return audio_path
 
 
-def build_pipeline(writer_name: str, synthesizer_name: str) -> Pipeline:
-    """Factory to wire dependencies based on arguments."""
-    from voice_backends import get_voice_backend
-    from writers import get_writer
-
-    writer = get_writer(writer_name)
-    synthesizer = get_voice_backend(synthesizer_name)
-    return Pipeline(writer, synthesizer)

@@ -4,6 +4,7 @@ from typing import List
 
 from script_schema import ChapterScript
 
+
 class ScriptWriter(ABC):
     """
     Stage 1: Interprets raw text into an annotated script.

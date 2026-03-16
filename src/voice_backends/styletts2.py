@@ -10,6 +10,7 @@ from config import Config
 from script_schema import ChapterScript, ScriptSegment
 from .base import VoiceBackend, SynthesisContext
 
+
 # Lazy load to avoid importing heavy PyTorch/StyleTTS2 deps on CLI start
 _tts_model = None
 
