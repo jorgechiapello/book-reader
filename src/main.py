@@ -9,12 +9,6 @@ from voice_backends.base import SynthesisContext
 
 def build_parser():
     parser = argparse.ArgumentParser(description="TTS Service CLI - 3-Stage Pipeline")
-    parser.add_argument(
-        "--output",
-        type=str,
-        default=Config.DEFAULT_OUTPUT_DIR,
-        help="Base directory for output files (default: from .env OUTPUT_DIR)"
-    )
     
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -22,6 +16,12 @@ def build_parser():
     # Generates a .json script from an input document.
     parser_script = subparsers.add_parser("script", help="Generate an annotated script from text.")
     parser_script.add_argument("input", type=str, help="Path to input file (txt, epub, pdf)")
+    parser_script.add_argument(
+        "--output",
+        type=str,
+        default=Config.DEFAULT_OUTPUT_DIR,
+        help="Base directory for output files (default: from .env OUTPUT_DIR)"
+    )
     parser_script.add_argument(
         "--writer", 
         type=str, 
@@ -34,6 +34,12 @@ def build_parser():
     # Generates .wav files from a .json script.
     parser_audio = subparsers.add_parser("audio", help="Generate audio from an annotated script.")
     parser_audio.add_argument("script", type=str, help="Path to the .json script file")
+    parser_audio.add_argument(
+        "--output",
+        type=str,
+        default=Config.DEFAULT_OUTPUT_DIR,
+        help="Base directory for output files (default: from .env OUTPUT_DIR)"
+    )
     parser_audio.add_argument(
         "--voice-backend", 
         type=str, 
@@ -48,6 +54,12 @@ def build_parser():
     # Runs the full pipeline end-to-end.
     parser_run = subparsers.add_parser("run", help="Run full pipeline: ingest -> script -> audio")
     parser_run.add_argument("input", type=str, help="Path to input file (txt, epub, pdf)")
+    parser_run.add_argument(
+        "--output",
+        type=str,
+        default=Config.DEFAULT_OUTPUT_DIR,
+        help="Base directory for output files (default: from .env OUTPUT_DIR)"
+    )
     parser_run.add_argument(
         "--writer", 
         type=str, 

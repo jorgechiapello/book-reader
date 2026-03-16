@@ -39,7 +39,7 @@ If you want the highest quality pacing and emotion, you need to run Ollama local
 
 *To specify a writer, use the `--writer` flag:*
 ```bash
-python src/main.py --output output run books/the-1000000-bank-note.pdf --writer rule_based
+python src/main.py run --output output books/the-1000000-bank-note.pdf --writer rule_based
 ```
 
 ## Running
@@ -57,22 +57,22 @@ python main.py
 
 Full pipeline (ingest → script → audio):
 ```bash
-python src/main.py --output output run books/the-1000000-bank-note.pdf --voice Heisenberg --voice-backend indextts2
+python src/main.py run --output output  books/the-1000000-bank-note.pdf --voice Heisenberg --voice-backend indextts2 
 ```
 
 Step by step:
 ```bash
 # Stage 1: Ingest book into a script
-python src/main.py --output output script books/the-1000000-bank-note.pdf --writer rule_based
+python src/main.py script --output output books/the-1000000-bank-note.pdf --writer rule_based
 
 # Stage 2: Generate audio (server must be running)
-python src/main.py --output output audio output/001_chapter-1_script.json --voice Heisenberg --voice-backend indextts2
+python src/main.py audio --output output output/001_chapter-1_script.json --voice Heisenberg --voice-backend indextts2
 ```
 
 ### StyleTTS2 (no server needed)
 
 ```bash
-python src/main.py --output output run books/the-1000000-bank-note.pdf --voice joe --voice-backend styletts2
+python src/main.py run --output output books/the-1000000-bank-note.pdf --voice joe --voice-backend styletts2
 ```
 
 ## Output Structure
