@@ -40,7 +40,8 @@ For each valid learning, produce a structured output with these fields:
 After extraction, determine the correct persistence mechanism:
 - **If the learning is a universal directive** → Append to `AGENTS.md` under `## Lessons Learned (Knowledge Base)`
 - **If the learning is a reusable procedure** → Create a new workflow in `.agents/workflows/`
-- **If the learning requires deep specialized knowledge** → Create a new skill in `.agents/skills/`
+- **If the learning requires deep specialized execution capabilities** → Create a new skill in `.agents/skills/`
+- **If the learning is a structural heuristic, architectural pattern, or domain concept** → Create a new knowledge file in `.agents/knowledge/`
 
 Use the `meta-skill-architect` skill to ensure any generated artifacts have correct YAML frontmatter.
 

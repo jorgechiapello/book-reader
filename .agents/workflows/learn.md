@@ -4,7 +4,7 @@ description: "Execute a deep post-mortem analysis of the current conversation, l
 
 # Learn Workflow: Retrospective Analysis and Systemic Self-Improvement
 
-Goal: Perform a detailed introspection of the current session's transactional history, algorithmically isolate friction points where autonomy failed or required corrective human intervention, and automatically synthesize the appropriate persistent infrastructure (Rules, Workflows, or Skills) to incorporate this capability into the development environment.
+Goal: Perform a detailed introspection of the current session's transactional history, algorithmically isolate friction points where autonomy failed or required corrective human intervention, and automatically synthesize the appropriate persistent infrastructure (Rules, Workflows, Skills, or Knowledge) to incorporate this capability into the development environment.
 
 ## Steps:
 
@@ -31,6 +31,9 @@ The agent understood the task theoretically and knew the syntax of individual to
 **c) Specific Technical Capability Deficit:**
 The task required manipulating complex data schemas, interacting with undocumented APIs, executing processes that need deterministic validation via scripts, or applying deep logic transformations based on examples.
 
+**d) Structural or Architectural Deficit:**
+The agent applied an architectural pattern (like scattered registries) that conflicts with the preferred repository conventions (like Composition Root/DI). The knowledge is structural rather than procedural.
+
 ### 3. Extract Knowledge via Learner Skill
 
 Before generating artifacts, invoke the `learner` skill (`.agents/skills/learner/SKILL.md`) to run its extraction checklist against each identified failure:
@@ -39,11 +42,13 @@ Before generating artifacts, invoke the `learner` skill (`.agents/skills/learner
 - For qualifying learnings, produce structured output: **Problem Statement**, **Root Cause**, **Solution**, **Triggers**, and **Principle**.
 - Discard any learnings that don't pass the filter — not every failure warrants persistence.
 
-### 4. Synthesize the Remediation Plan
+### 4. Synthesize the Remediation Plan & Request User Approval
 
 - Write a concise manifest in the chat titled **"Agent Retrospective and Evolution Plan"**.
-- For each extracted learning, specify the origin of the failure and justify the choice of extensibility artifact.
-- List the exact file paths and artifact types you will create.
+- For each extracted learning, specify the origin of the failure and justify the choice of extensibility artifact (Rule, Workflow, Skill, or Knowledge).
+- List the exact file paths and artifact types you intend to create.
+- **[CRITICAL PAUSE]** You MUST stop here and explicitly ask the user: *"Do you agree with these learnings and the proposed remediation plan?"*
+- Do NOT proceed to generate any files until the user explicitly confirms or provides corrections. If the user provides corrections, update the learnings and plan accordingly before proceeding.
 
 ### 5. Load Meta-Skill Architect Formatting Rules
 
@@ -69,6 +74,10 @@ Based on the diagnosis and extracted learnings, use your file-writing capabiliti
 **SCENARIO C — Skill Creation (Capability Deficit):**
 - Follow `meta-skill-architect` specs: kebab-case directory, `SKILL.md` with `name:` + `description:` YAML, `## Goal` / `## Instructions` / `## Constraints` sections.
 - Optionally add `scripts/`, `examples/`, or `resources/` subdirectories if needed.
+
+**SCENARIO D — Knowledge Creation (Architectural Deficit):**
+- Create a file at `.agents/knowledge/<pattern-name>.md`.
+- Follow `meta-skill-architect` specs: YAML Frontmatter with `description:` only. Document the preferred architectural heuristics and structural patterns.
 
 ### 7. Validation and Loop Closure
 

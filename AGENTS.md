@@ -17,3 +17,4 @@
 
 - **Full-file pattern sweep:** When editing a repeated pattern in documentation or code (e.g., CLI argument order), scan the ENTIRE file for all occurrences of the same pattern — not just the line the user pointed at.
   - *Trigger:* User asks to fix a specific line in a file that contains similar lines elsewhere.
+

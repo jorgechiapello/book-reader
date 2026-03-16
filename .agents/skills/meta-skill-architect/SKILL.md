@@ -40,6 +40,13 @@ When assigned responsibility for creating a new Workflow or a new Skill (whether
 3. **Content:** Passive, imperative, and concise directives. Use bullet points for individual rules.
 4. **Scope:** Only create rules for directives that must apply to ALL future interactions. Do not use rules for situational knowledge.
 
+### Structural Specifications for Knowledge (`.agents/knowledge/`)
+
+1. **File Extension:** Always `.md` located directly in the directories (no subfolders needed unless categorizing heavily).
+2. **YAML Frontmatter:** Optional, but if present must only use the `description:` field.
+3. **Internal Structure:** Group content by clear structural patterns. Common headers include `## Goal`, `## Principles`, `## Examples` (showing Incorrect vs Correct implementations).
+4. **Content Logic:** Focus on the "Why" and "Where" lines are drawn in the architecture, rather than the "How" to execute a script. Focus on Composition over Inheritance, DI boundaries, or naming conventions.
+
 ## Constraints
 
 - Under NO circumstance include executable Markdown code blocks (triple backtick) directly inside the YAML metadata block delimiters.
