@@ -1,37 +1,11 @@
 import re
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List
-from abc import ABC, abstractmethod
 
+from text_extractors.main import TextExtractor, Chapter
+from readers.main import ReaderInterface
+from readers.pdf_reader import PyPdfReader
 
-@dataclass
-class Chapter:
-    title: str
-    segments: List[str] = field(default_factory=list)
-
-    @property
-    def text(self) -> str:
-        """Concatenated text of all segments (for backward compatibility)."""
-        return "\n".join(self.segments)
-
-class ReaderInterface(ABC):
-    @abstractmethod
-    def extract_pages(self) -> List[str]:
-        pass
-
-class PyPdfReader(ReaderInterface):
-    def __init__(self, path: str):
-        from pypdf import PdfReader
-        self.reader = PdfReader(path)
-
-    def extract_pages(self) -> List[str]:
-        return [page.extract_text() or "" for page in self.reader.pages]
-
-class TextExtractor(ABC):
-    @abstractmethod
-    def extract_segments(self, text: str) -> List[str]:
-        pass
 
 class RuleBasedTextExtractor(TextExtractor):
     def __init__(self, reader: ReaderInterface):
@@ -55,7 +29,6 @@ class RuleBasedTextExtractor(TextExtractor):
 
     def extract_segments(self, text: str) -> List[str]:
         return self._extract_segments(text.split("\n"))
-
 
     def _split_into_chapter_blocks(self, text: str) -> List[tuple]:
         """Split full text into (title, body) blocks at 'Chapter N' headings."""
